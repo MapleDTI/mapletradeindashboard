@@ -80,9 +80,10 @@ STATE_MAPPING = {
 #CASHIFY_FILE_URL = os.path.join(gdrive_loading_block, "Cashify Trade-in Sept'24 to 12th May'25.xlsx")
 #SPOC_FILE_URL = os.path.join(gdrive_loading_block, "SPOC Master Data Sheet.xlsx")
 
-MAPLE_FILE_URL = "https://docs.google.com/spreadsheets/d/1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS/export?format=xlsx"
-CASHIFY_FILE_URL = "https://docs.google.com/spreadsheets/d/1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD/export?format=xlsx"
-SPOC_FILE_URL = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/export?format=xlsx"
+# Define URLs globally
+MAPLE_URL = "https://docs.google.com/spreadsheets/d/1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS/export?format=xlsx"
+CASHIFY_URL = "https://docs.google.com/spreadsheets/d/1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD/export?format=xlsx"
+SPOC_URL = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/export?format=xlsx"
 
 @st.cache_data
 def load_excel_from_url(url):
@@ -94,14 +95,14 @@ def load_excel_from_url(url):
         st.error(f"❌ Error loading file from {url}\n\nDetails: {e}")
         return None
 
-def main():
+def preview_data():
     # Load data once and store in session_state
     if "maple_data" not in st.session_state:
-        st.session_state.maple_data = load_excel_from_url(MAPLE_FILE_URL)
+        st.session_state.maple_data = load_excel_from_url(MAPLE_URL)
     if "cashify_data" not in st.session_state:
-        st.session_state.cashify_data = load_excel_from_url(CASHIFY_FILE_URL)
+        st.session_state.cashify_data = load_excel_from_url(CASHIFY_URL)
     if "spoc_data" not in st.session_state:
-        st.session_state.spoc_data = load_excel_from_url(SPOC_FILE_URL)
+        st.session_state.spoc_data = load_excel_from_url(SPOC_URL)
 
     if (st.session_state.maple_data is None or 
         st.session_state.cashify_data is None or 
@@ -443,6 +444,21 @@ def logout():
         st.session_state.spoc_mapping_complete = False
         st.session_state.spoc_ids = {}
         st.sidebar.success("Logged out successfully")
+
+def main():
+    if not st.session_state.authenticated:
+        login()
+        return
+
+    st.sidebar.write(f"Logged in as: {users[st.session_state.username]['name']}")
+    logout()
+
+    # Sidebar for reset and sample download
+    st.sidebar.header("Options")
+    if st.sidebar.button("Reset Column Mappings"):
+        st.session_state.column_mappings = {'Maple': {}, 'Cashify': {}, 'SPOC': {}}
+        st.session_state.spoc_mapping_complete = False
+        st.sidebar.success("Column mappings reset. Please reload the app to re-map columns.")
 
 def get_last_n_months_for_page(n):
     current_date = date.today()
