@@ -79,17 +79,12 @@ STATE_MAPPING = {
 #cashify_df = os.path.join(gdrive_loading_block, "Cashify Trade-in Sept'24 to 12th May'25.xlsx")
 #spoc_df = os.path.join(gdrive_loading_block, "SPOC Master Data Sheet.xlsx")
 
-import streamlit as st
-import pandas as pd
-import gdown
-import os
-
-# File IDs from your Google Drive links
+# File IDs from your Google Sheets links
 MAPLE_FILE_ID = "1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS"
 CASHIFY_FILE_ID = "1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD"
 SPOC_FILE_ID = "1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg"
 
-# Function to download and load Excel from GDrive using gdown
+# Function to download & load Excel from GDrive
 @st.cache_data
 def load_excel_from_gdrive(file_id, filename):
     try:
@@ -99,17 +94,17 @@ def load_excel_from_gdrive(file_id, filename):
         df = pd.read_excel(local_path, engine='openpyxl')
         return df
     except Exception as e:
-        st.warning(f"⚠️ Could not load file from Google Drive ID {file_id}. Details: {e}")
+        st.error(f"🚫 Could not load file with ID: {file_id}\n\nError: {e}")
         return None
 
-# Load files
+# Try loading all 3 datasets
 maple_df = load_excel_from_gdrive(MAPLE_FILE_ID, "maple_data.xlsx")
 cashify_df = load_excel_from_gdrive(CASHIFY_FILE_ID, "cashify_data.xlsx")
 spoc_df = load_excel_from_gdrive(SPOC_FILE_ID, "spoc_data.xlsx")
 
-# Validation
-if maple_df is None or cashify_df is None or spoc_df is None:
-    st.error("🚫 One or more files failed to load. Ensure they're .xlsx format and publicly accessible.")
+# Check validity
+if not all([maple_df is not None, cashify_df is not None, spoc_df is not None]):
+    st.error("🚨 Failed to load one or more files. Please check if your Google Sheets are public and in `.xlsx` format.")
     st.stop()
 
 # Save to session
@@ -117,7 +112,8 @@ st.session_state.maple_data = maple_df
 st.session_state.cashify_data = cashify_df
 st.session_state.spoc_data = spoc_df
 
-st.success("✅ All Excel files loaded successfully from Google Drive.")
+st.success("✅ Data loaded successfully! Ready for analysis.")
+
 
 
 def standardize_state_names(df, state_col='Store State'):
