@@ -78,37 +78,37 @@ STATE_MAPPING = {
 #cashify_df = os.path.join(gdrive_loading_block, "Cashify Trade-in Sept'24 to 12th May'25.xlsx")
 #spoc_df = os.path.join(gdrive_loading_block, "SPOC Master Data Sheet.xlsx")
 
-# Google Drive Excel File URLs
-# File URLs
+# URLs for the shared Google Drive Excel files (must be .xlsx and public)
 MAPLE_FILE_URL = "https://drive.google.com/uc?export=download&id=1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS"
 CASHIFY_FILE_URL = "https://drive.google.com/uc?export=download&id=1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD"
 SPOC_FILE_URL = "https://drive.google.com/uc?export=download&id=1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg"
 
-# Cached loader
+# Function to load Excel files from GDrive
 @st.cache_data
 def load_excel_from_gdrive(url):
     try:
-        return pd.read_excel(url, engine='openpyxl')
+        df = pd.read_excel(url, engine='openpyxl')
+        return df
     except Exception as e:
-        st.error(f"❌ Error loading file from {url}\n\n{e}")
-        return pd.DataFrame()
+        st.warning(f"⚠️ Could not load file from {url}\n\nDetails: {e}")
+        return None
 
-# Load data
+# Load the files
 maple_df = load_excel_from_gdrive(MAPLE_FILE_URL)
 cashify_df = load_excel_from_gdrive(CASHIFY_FILE_URL)
 spoc_df = load_excel_from_gdrive(SPOC_FILE_URL)
 
-# Ensure valid data
-if maple_df.empty or cashify_df.empty or spoc_df.empty:
-    st.error("🚨 One or more files failed to load. Please check if the file format is valid Excel and shared with 'Anyone with the link'.")
+# Check if any of the files failed to load
+if maple_df is None or cashify_df is None or spoc_df is None:
+    st.error("🚫 One or more files failed to load. Please ensure the files are in `.xlsx` format and shared with 'Anyone with the link'.")
     st.stop()
 
-# Store in session
+# Save to session
 st.session_state.maple_data = maple_df
 st.session_state.cashify_data = cashify_df
 st.session_state.spoc_data = spoc_df
 
-st.success("✅ All Excel files loaded successfully from Google Drive.")
+st.success("✅ Excel files loaded successfully.")
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
