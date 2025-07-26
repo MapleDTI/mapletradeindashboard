@@ -79,33 +79,54 @@ STATE_MAPPING = {
 #cashify_df = os.path.join(gdrive_loading_block, "Cashify Trade-in Sept'24 to 12th May'25.xlsx")
 #spoc_df = os.path.join(gdrive_loading_block, "SPOC Master Data Sheet.xlsx")
 
-# File IDs from your Google Sheets links
-MAPLE_FILE_ID = "1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS"
-CASHIFY_FILE_ID = "1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD"
-SPOC_FILE_ID = "1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg"
+import streamlit as st
+import pandas as pd
+import requests
+from io import BytesIO
 
-# Function to download & load Excel from GDrive
+# Google Drive direct download links (ensure files are shared as "Anyone with the link")
+MAPLE_FILE_URL = "https://drive.google.com/uc?export=download&id=1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS"
+CASHIFY_FILE_URL = "https://drive.google.com/uc?export=download&id=1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD"
+SPOC_FILE_URL = "https://drive.google.com/uc?export=download&id=1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg"
+
+# Load Excel from URL
 @st.cache_data
-def load_excel_from_gdrive(file_id, filename):
+def load_excel_from_url(url):
     try:
-        url = f"https://drive.google.com/uc?id={file_id}"
-        local_path = f"/tmp/{filename}"
-        gdown.download(url, local_path, quiet=False)
-        df = pd.read_excel(local_path, engine='openpyxl')
-        return df
+        response = requests.get(url)
+        if response.status_code == 200:
+            return pd.read_excel(BytesIO(response.content), engine='openpyxl')
+        else:
+            st.warning(f"⚠️ Failed to download file from URL: {url}")
+            return None
     except Exception as e:
-        st.error(f"🚫 Could not load file with ID: {file_id}\n\nError: {e}")
+        st.error(f"❌ Error loading file: {e}")
         return None
 
-# Try loading all 3 datasets
-maple_df = load_excel_from_gdrive(MAPLE_FILE_ID, "maple_data.xlsx")
-cashify_df = load_excel_from_gdrive(CASHIFY_FILE_ID, "cashify_data.xlsx")
-spoc_df = load_excel_from_gdrive(SPOC_FILE_ID, "spoc_data.xlsx")
+# Load all data
+maple_df = load_excel_from_url(MAPLE_FILE_URL)
+cashify_df = load_excel_from_url(CASHIFY_FILE_URL)
+spoc_df = load_excel_from_url(SPOC_FILE_URL)
 
-# Check validity
-if not all([maple_df is not None, cashify_df is not None, spoc_df is not None]):
-    st.error("🚨 Failed to load one or more files. Please check if your Google Sheets are public and in `.xlsx` format.")
+# Check loading
+if maple_df is None or cashify_df is None or spoc_df is None:
+    st.error("🚫 One or more files failed to load. Please verify the shared links and ensure they are publicly accessible Excel (.xlsx) files.")
     st.stop()
+
+# Store in session state
+st.session_state.maple_data = maple_df
+st.session_state.cashify_data = cashify_df
+st.session_state.spoc_data = spoc_df
+
+# Success message
+st.success("✅ All Excel files loaded successfully.")
+
+# Sample preview
+st.subheader("📌 Preview of Loaded Data")
+st.write("📄 Maple Data", maple_df.head())
+st.write("📄 Cashify Data", cashify_df.head())
+st.write("📄 SPOC Data", spoc_df.head())
+
 
 # Save to session
 st.session_state.maple_data = maple_df
