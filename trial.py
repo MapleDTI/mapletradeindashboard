@@ -79,31 +79,36 @@ STATE_MAPPING = {
 #spoc_df = os.path.join(gdrive_loading_block, "SPOC Master Data Sheet.xlsx")
 
 # Google Drive Excel File URLs
-MAPLE_FILE_URL = "https://drive.google.com/uc?export=download&id=1gX8A123abc456XYZ789"
-CASHIFY_FILE_URL = "https://drive.google.com/uc?export=download&id=1d6DzTulRealExcelID"
-SPOC_FILE_URL = "https://drive.google.com/uc?export=download&id=1dbWaoHKRealExcelID"
+# File URLs
+MAPLE_FILE_URL = "https://drive.google.com/uc?export=download&id=1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS"
+CASHIFY_FILE_URL = "https://drive.google.com/uc?export=download&id=1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD"
+SPOC_FILE_URL = "https://drive.google.com/uc?export=download&id=1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg"
 
+# Cached loader
 @st.cache_data
 def load_excel_from_gdrive(url):
     try:
         return pd.read_excel(url, engine='openpyxl')
     except Exception as e:
-        st.error(f"Error loading file from {url}: {e}")
+        st.error(f"❌ Error loading file from {url}\n\n{e}")
         return pd.DataFrame()
 
-# Load Excel files from Google Drive
+# Load data
 maple_df = load_excel_from_gdrive(MAPLE_FILE_URL)
 cashify_df = load_excel_from_gdrive(CASHIFY_FILE_URL)
 spoc_df = load_excel_from_gdrive(SPOC_FILE_URL)
 
-# Assign to session state
-if not maple_df.empty:
-    st.session_state.maple_data = maple_df
-if not cashify_df.empty:
-    st.session_state.cashify_data = cashify_df
-if not spoc_df.empty:
-    st.session_state.spoc_data = spoc_df
+# Ensure valid data
+if maple_df.empty or cashify_df.empty or spoc_df.empty:
+    st.error("🚨 One or more files failed to load. Please check if the file format is valid Excel and shared with 'Anyone with the link'.")
+    st.stop()
 
+# Store in session
+st.session_state.maple_data = maple_df
+st.session_state.cashify_data = cashify_df
+st.session_state.spoc_data = spoc_df
+
+st.success("✅ All Excel files loaded successfully from Google Drive.")
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
