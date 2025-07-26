@@ -12,6 +12,7 @@ import os
 import logging
 import calendar
 import uuid
+import gdown
 
 # Configure logging
 logging.basicConfig(filename='debug.log', level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -78,29 +79,37 @@ STATE_MAPPING = {
 #cashify_df = os.path.join(gdrive_loading_block, "Cashify Trade-in Sept'24 to 12th May'25.xlsx")
 #spoc_df = os.path.join(gdrive_loading_block, "SPOC Master Data Sheet.xlsx")
 
-# URLs for the shared Google Drive Excel files (must be .xlsx and public)
-MAPLE_FILE_URL = "https://drive.google.com/uc?export=download&id=1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS"
-CASHIFY_FILE_URL = "https://drive.google.com/uc?export=download&id=1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD"
-SPOC_FILE_URL = "https://drive.google.com/uc?export=download&id=1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg"
+import streamlit as st
+import pandas as pd
+import gdown
+import os
 
-# Function to load Excel files from GDrive
+# File IDs from your Google Drive links
+MAPLE_FILE_ID = "1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS"
+CASHIFY_FILE_ID = "1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD"
+SPOC_FILE_ID = "1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg"
+
+# Function to download and load Excel from GDrive using gdown
 @st.cache_data
-def load_excel_from_gdrive(url):
+def load_excel_from_gdrive(file_id, filename):
     try:
-        df = pd.read_excel(url, engine='openpyxl')
+        url = f"https://drive.google.com/uc?id={file_id}"
+        local_path = f"/tmp/{filename}"
+        gdown.download(url, local_path, quiet=False)
+        df = pd.read_excel(local_path, engine='openpyxl')
         return df
     except Exception as e:
-        st.warning(f"⚠️ Could not load file from {url}\n\nDetails: {e}")
+        st.warning(f"⚠️ Could not load file from Google Drive ID {file_id}. Details: {e}")
         return None
 
-# Load the files
-maple_df = load_excel_from_gdrive(MAPLE_FILE_URL)
-cashify_df = load_excel_from_gdrive(CASHIFY_FILE_URL)
-spoc_df = load_excel_from_gdrive(SPOC_FILE_URL)
+# Load files
+maple_df = load_excel_from_gdrive(MAPLE_FILE_ID, "maple_data.xlsx")
+cashify_df = load_excel_from_gdrive(CASHIFY_FILE_ID, "cashify_data.xlsx")
+spoc_df = load_excel_from_gdrive(SPOC_FILE_ID, "spoc_data.xlsx")
 
-# Check if any of the files failed to load
+# Validation
 if maple_df is None or cashify_df is None or spoc_df is None:
-    st.error("🚫 One or more files failed to load. Please ensure the files are in `.xlsx` format and shared with 'Anyone with the link'.")
+    st.error("🚫 One or more files failed to load. Ensure they're .xlsx format and publicly accessible.")
     st.stop()
 
 # Save to session
@@ -108,7 +117,8 @@ st.session_state.maple_data = maple_df
 st.session_state.cashify_data = cashify_df
 st.session_state.spoc_data = spoc_df
 
-st.success("✅ Excel files loaded successfully.")
+st.success("✅ All Excel files loaded successfully from Google Drive.")
+
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
