@@ -74,12 +74,6 @@ STATE_MAPPING = {
     'py': 'Puducherry'
 }
 
-# File paths
-#gdrive_loading_block = "/Users/maple/Desktop/SPOC Review file/data"
-#maple_df = os.path.join(gdrive_loading_block, "Actual Data Sheet.xlsx")
-#cashify_df = os.path.join(gdrive_loading_block, "Cashify Trade-in Sept'24 to 12th May'25.xlsx")
-#spoc_df = os.path.join(gdrive_loading_block, "SPOC Master Data Sheet.xlsx")
-
 # ✅ Correct export URLs
 MAPLE_FILE_URL = "https://docs.google.com/spreadsheets/d/1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS/export?format=xlsx"
 CASHIFY_FILE_URL = "https://docs.google.com/spreadsheets/d/1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD/export?format=xlsx"
