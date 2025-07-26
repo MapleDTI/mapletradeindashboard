@@ -78,15 +78,18 @@ STATE_MAPPING = {
 #cashify_df = os.path.join(gdrive_loading_block, "Cashify Trade-in Sept'24 to 12th May'25.xlsx")
 #spoc_df = os.path.join(gdrive_loading_block, "SPOC Master Data Sheet.xlsx")
 
-gdrive_loading_block = """
-# Google Drive File URLs (replace FILE_IDs with your actual Google Drive file IDs)
-MAPLE_FILE_URL = "https://docs.google.com/spreadsheets/d/1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS/edit?usp=sharing&ouid=117925699190900838275&rtpof=true&sd=true"
-CASHIFY_FILE_URL = "https://docs.google.com/spreadsheets/d/1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD/edit?usp=sharing&ouid=117925699190900838275&rtpof=true&sd=true"
-SPOC_FILE_URL = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/edit?usp=sharing&ouid=117925699190900838275&rtpof=true&sd=true"
+# Google Drive Excel File URLs
+MAPLE_FILE_URL = "https://drive.google.com/uc?export=download&id=1gX8A123abc456XYZ789"
+CASHIFY_FILE_URL = "https://drive.google.com/uc?export=download&id=1d6DzTulRealExcelID"
+SPOC_FILE_URL = "https://drive.google.com/uc?export=download&id=1dbWaoHKRealExcelID"
 
 @st.cache_data
 def load_excel_from_gdrive(url):
-    return pd.read_excel(url, engine='openpyxl')
+    try:
+        return pd.read_excel(url, engine='openpyxl')
+    except Exception as e:
+        st.error(f"Error loading file from {url}: {e}")
+        return pd.DataFrame()
 
 # Load Excel files from Google Drive
 maple_df = load_excel_from_gdrive(MAPLE_FILE_URL)
@@ -94,10 +97,13 @@ cashify_df = load_excel_from_gdrive(CASHIFY_FILE_URL)
 spoc_df = load_excel_from_gdrive(SPOC_FILE_URL)
 
 # Assign to session state
-st.session_state.maple_data = maple_df
-st.session_state.cashify_data = cashify_df
-st.session_state.spoc_data = spoc_df
-"""
+if not maple_df.empty:
+    st.session_state.maple_data = maple_df
+if not cashify_df.empty:
+    st.session_state.cashify_data = cashify_df
+if not spoc_df.empty:
+    st.session_state.spoc_data = spoc_df
+
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
@@ -817,7 +823,7 @@ def main():
             st.error(f"SPOC file not found at {spoc_df}. Please ensure the file exists.")
             raise FileNotFoundError
     except Exception as e:
-        st.error(f"Error loading files: {str(e)}. Please check the Excel files at {gdrive_loading_block}.")
+        st.error(f"Error loading files: {str(e)}. Please check the Excel files at uploader.")
         st.stop()
 
     # Validate and process data
