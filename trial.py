@@ -84,39 +84,32 @@ import pandas as pd
 import requests
 from io import BytesIO
 
-# Google Drive download URLs (make sure file access is 'Anyone with the link')
-MAPLE_FILE_URL = "https://drive.google.com/uc?export=download&id=1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS"
-CASHIFY_FILE_URL = "https://drive.google.com/uc?export=download&id=1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD"
-SPOC_FILE_URL = "https://drive.google.com/uc?export=download&id=1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg"
+st.set_page_config(page_title="Maple vs Cashify Dashboard", layout="wide")
 
-# Load Excel file from URL
+# Corrected Google Sheets export URLs
+MAPLE_FILE_URL = "https://docs.google.com/spreadsheets/d/1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS/export?format=xlsx"
+CASHIFY_FILE_URL = "https://docs.google.com/spreadsheets/d/1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD/export?format=xlsx"
+SPOC_FILE_URL = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/export?format=xlsx"
+
+# Function to load Excel from URL
 @st.cache_data
 def load_excel_from_url(url):
     try:
         response = requests.get(url)
-        if response.status_code == 200:
-            excel_data = BytesIO(response.content)
-            return pd.read_excel(excel_data, engine='openpyxl')
-        else:
-            st.warning(f"⚠️ Failed to download file. Status code: {response.status_code}")
-            return None
+        response.raise_for_status()
+        return pd.read_excel(BytesIO(response.content), engine="openpyxl")
     except Exception as e:
         st.error(f"❌ Error loading file from {url}\n\nDetails: {e}")
         return None
 
-# 🔐 SAFEGUARD: Initialize variables to avoid UnboundLocalError
-maple_df = None
-cashify_df = None
-spoc_df = None
-
-# Attempt loading
+# Load files
 maple_df = load_excel_from_url(MAPLE_FILE_URL)
 cashify_df = load_excel_from_url(CASHIFY_FILE_URL)
 spoc_df = load_excel_from_url(SPOC_FILE_URL)
 
-# Validate
+# Final validation
 if maple_df is None or cashify_df is None or spoc_df is None:
-    st.error("🚫 One or more files failed to load. Please check that each file is:\n- A valid .xlsx file\n- Shared publicly with 'Anyone with the link'\n- Not password protected.")
+    st.error("🚫 One or more files failed to load. Please check the Google Sheet links and confirm export is enabled.")
     st.stop()
 
 # Store in session
@@ -124,7 +117,14 @@ st.session_state.maple_data = maple_df
 st.session_state.cashify_data = cashify_df
 st.session_state.spoc_data = spoc_df
 
-st.success("✅ All files loaded successfully.")
+# Previews
+st.success("✅ All Excel files loaded successfully.")
+st.subheader("📄 Maple Data Preview")
+st.dataframe(maple_df.head())
+st.subheader("📄 Cashify Data Preview")
+st.dataframe(cashify_df.head())
+st.subheader("📄 SPOC Data Preview")
+st.dataframe(spoc_df.head())
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
