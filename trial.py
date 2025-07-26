@@ -99,35 +99,38 @@ def main():
     st.set_page_config(layout="wide")
     st.title("📊 Maple vs Cashify - Trade-in Data Dashboard")
 
-    # ✅ Load files into session_state if not already
-    if "maple_data" not in st.session_state:
-        st.session_state.maple_data = load_excel_from_url(MAPLE_FILE_URL)
-    if "cashify_data" not in st.session_state:
-        st.session_state.cashify_data = load_excel_from_url(CASHIFY_FILE_URL)
-    if "spoc_data" not in st.session_state:
-        st.session_state.spoc_data = load_excel_from_url(SPOC_FILE_URL)
-
-    # ✅ Check that all data loaded correctly
-    if (
-        st.session_state.maple_data is None or 
-        st.session_state.cashify_data is None or 
-        st.session_state.spoc_data is None
-    ):
-        st.error("🚫 One or more files failed to load. Please check that export is enabled and URLs are correct.")
+    # 🔐 Load data from URLs
+    maple_df = load_excel_from_url(MAPLE_FILE_URL)
+    if maple_df is None:
+        st.error("❌ Maple file failed to load.")
         st.stop()
 
-    # ✅ Display success and previews
+    cashify_df = load_excel_from_url(CASHIFY_FILE_URL)
+    if cashify_df is None:
+        st.error("❌ Cashify file failed to load.")
+        st.stop()
+
+    spoc_df = load_excel_from_url(SPOC_FILE_URL)
+    if spoc_df is None:
+        st.error("❌ SPOC file failed to load.")
+        st.stop()
+
+    # ✅ Store in session state
+    st.session_state.maple_data = maple_df
+    st.session_state.cashify_data = cashify_df
+    st.session_state.spoc_data = spoc_df
+
+    # ✅ Display success message and previews
     st.success("✅ All Excel files loaded successfully.")
 
     st.subheader("📄 Maple Data Preview")
-    st.dataframe(st.session_state.maple_data.head())
+    st.dataframe(maple_df.head())
 
     st.subheader("📄 Cashify Data Preview")
-    st.dataframe(st.session_state.cashify_data.head())
+    st.dataframe(cashify_df.head())
 
     st.subheader("📄 SPOC Data Preview")
-    st.dataframe(st.session_state.spoc_data.head())
-
+    st.dataframe(spoc_df.head())
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
