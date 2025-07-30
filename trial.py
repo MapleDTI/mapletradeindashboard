@@ -94,38 +94,38 @@ def main():
     st.title("📊 Maple vs Cashify - Trade-in Data Dashboard")
 
     # ✅ Load Excel files into memory
-    maple_df = load_excel_from_url(MAPLE_FILE_URL)
-    if maple_df is None:
+    maple_file_path = load_excel_from_url(MAPLE_FILE_URL)
+    if maple_file_path is None:
         st.error("❌ Maple file failed to load.")
         st.stop()
 
-    cashify_df = load_excel_from_url(CASHIFY_FILE_URL)
-    if cashify_df is None:
+    cashify_file_path = load_excel_from_url(CASHIFY_FILE_URL)
+    if cashify_file_path is None:
         st.error("❌ Cashify file failed to load.")
         st.stop()
 
-    spoc_df = load_excel_from_url(SPOC_FILE_URL)
-    if spoc_df is None:
+    spoc_file_path = load_excel_from_url(SPOC_FILE_URL)
+    if spoc_file_path is None:
         st.error("❌ SPOC file failed to load.")
         st.stop()
 
     # ✅ Save in session state to reuse elsewhere
-    st.session_state.maple_data = maple_df
-    st.session_state.cashify_data = cashify_df
-    st.session_state.spoc_data = spoc_df
+    st.session_state.maple_data = pd.read_excel(maple_file_path)
+    st.session_state.cashify_data = pd.read_excel(cashify_file_path)
+    st.session_state.spoc_data = pd.read_excel(spoc_file_path)
 
     # ✅ Preview loaded data
     st.success("✅ All Excel files loaded successfully.")
 
     st.subheader("📄 Maple Data Preview")
-    st.dataframe(maple_df.head())
+    st.dataframe(st.session_state.maple_data.head())
 
     st.subheader("📄 Cashify Data Preview")
-    st.dataframe(cashify_df.head())
+    st.dataframe(st.session_state.cashify_data.head())
 
     st.subheader("📄 SPOC Data Preview")
-    st.dataframe(spoc_df.head())
-    
+    st.dataframe(st.session_state.spoc_data.head())
+
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
         df[state_col] = df[state_col].str.strip().str.title()
@@ -462,26 +462,26 @@ def get_last_n_months_for_page(n):
         months.append((calendar.month_name[month], year))
     return sorted(months, key=lambda x: (x[1], list(calendar.month_name).index(x[0])))
 
-def process_spoc_weekoffs(spoc_df, selected_year, selected_month):
-    if 'Weekoff Day' not in spoc_df.columns or selected_month == "All":
+def process_spoc_weekoffs(spoc_file_path, selected_year, selected_month):
+    if 'Weekoff Day' not in st.session_state.spoc_data.columns or selected_month == "All":
         return {}
     
     spoc_weekoffs = {}
-    for _, row in spoc_df.iterrows():
+    for _, row in st.session_state.spoc_data.iterrows():
         if pd.notna(row['Weekoff Day']) and row['Weekoff Day'] != "Vacant":
             spoc_weekoffs[row['Spoc Name']] = get_weekoffs(selected_year, selected_month, row['Weekoff Day'])
     
     logging.info(f"Processed weekoffs for {len(spoc_weekoffs)} SPOCs")
     return spoc_weekoffs
 
-def process_devices_lost_section(maple_filtered, cashify_filtered, spoc_df, selected_year, selected_month, selected_day):
+def process_devices_lost_section(maple_filtered, cashify_filtered, spoc_data, selected_year, selected_month, selected_day):
     st.header("5. Devices Lost on SPOC Weekoff Days")
     
     if selected_month == "All":
         st.warning("Please select a specific month for weekoff analysis")
         return
     
-    spoc_weekoffs = process_spoc_weekoffs(spoc_df, selected_year, selected_month)
+    spoc_weekoffs = process_spoc_weekoffs(spoc_data, selected_year, selected_month)
     
     if not spoc_weekoffs:
         st.info("No devices lost on weekoff days (no weekoff data available)")
@@ -534,14 +534,14 @@ def process_devices_lost_section(maple_filtered, cashify_filtered, spoc_df, sele
         )
         st.plotly_chart(fig, use_container_width=True)
 
-def process_working_day_losses(maple_filtered, cashify_filtered, spoc_df, selected_year, selected_month):
+def process_working_day_losses(maple_filtered, cashify_filtered, spoc_data, selected_year, selected_month):
     st.header("6. Working Day Losses")
     
     if selected_month == "All":
         st.warning("Please select a specific month for working day analysis")
         return
     
-    spoc_weekoffs = process_spoc_weekoffs(spoc_df, selected_year, selected_month)
+    spoc_weekoffs = process_spoc_weekoffs(spoc_data, selected_year, selected_month)
     
     if not spoc_weekoffs:
         st.info("No working day losses data available (no weekoff data for comparison)")
@@ -756,7 +756,7 @@ def process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, 
     )
     st.plotly_chart(fig, use_container_width=True)
 
-def base_analysis(maple_df, cashify_df, spoc_df):
+def base_analysis(maple_df, cashify_df, spoc_data):
     st.title("Maple vs Cashify Analytics Dashboard")
 
     st.header("Filters")
@@ -800,8 +800,8 @@ def base_analysis(maple_df, cashify_df, spoc_df):
     cashify_filtered['Product Category'] = cashify_filtered['Product Type'].apply(categorize_product_type)
 
     # Process each section
-    process_devices_lost_section(maple_filtered, cashify_filtered, spoc_df, selected_year, selected_month)
-    process_working_day_losses(maple_filtered, cashify_filtered, spoc_df, selected_year, selected_month)
+    process_devices_lost_section(maple_filtered, cashify_filtered, spoc_data=st.session_state.spoc_data, selected_year=selected_year, selected_month=selected_month)
+    process_working_day_losses(maple_filtered, cashify_filtered, spoc_data=st.session_state.spoc_data, selected_year=selected_year, selected_month=selected_month)
     process_tradein_losses(cashify_filtered, selected_year, selected_month)
     process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, selected_month)
 
@@ -828,7 +828,7 @@ def main():
         else:
             st.error(f"Maple file not found at {maple_df}. Please ensure the file exists.")
             raise FileNotFoundError
-        
+
         if os.path.exists(cashify_df):
             st.session_state.cashify_data = pd.read_excel(cashify_df)
             st.session_state.column_mappings['Cashify'] = {}
