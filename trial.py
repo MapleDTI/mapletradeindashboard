@@ -93,39 +93,54 @@ def main():
     st.set_page_config(layout="wide")
     st.title("📊 Maple vs Cashify - Trade-in Data Dashboard")
 
-    # ✅ Load Excel files into memory
-    maple_file_path = load_excel_from_url(MAPLE_FILE_URL)
-    if maple_file_path is None:
+    # 🔐 Load data from URLs (no more os.path.exists on undefined maple_df, etc.)
+    maple_df = load_excel_from_url(MAPLE_FILE_URL)
+    if maple_df is None:
         st.error("❌ Maple file failed to load.")
         st.stop()
+    st.session_state.maple_data = maple_df
+    st.session_state.column_mappings['Maple'] = {}
 
-    cashify_file_path = load_excel_from_url(CASHIFY_FILE_URL)
-    if cashify_file_path is None:
+    cashify_df = load_excel_from_url(CASHIFY_FILE_URL)
+    if cashify_df is None:
         st.error("❌ Cashify file failed to load.")
         st.stop()
+    st.session_state.cashify_data = cashify_df
+    st.session_state.column_mappings['Cashify'] = {}
 
-    spoc_file_path = load_excel_from_url(SPOC_FILE_URL)
-    if spoc_file_path is None:
+    spoc_df = load_excel_from_url(SPOC_FILE_URL)
+    if spoc_df is None:
         st.error("❌ SPOC file failed to load.")
         st.stop()
+    st.session_state.spoc_data = spoc_df
+    st.session_state.column_mappings['SPOC'] = {}
+    st.session_state.spoc_mapping_complete = False
 
-    # ✅ Save in session state to reuse elsewhere
-    st.session_state.maple_data = pd.read_excel(maple_file_path)
-    st.session_state.cashify_data = pd.read_excel(cashify_file_path)
-    st.session_state.spoc_data = pd.read_excel(spoc_file_path)
+    # ✅ Now proceed with your existing validation/mapping and UI code:
+    with st.spinner("Processing data..."):
+        maple_df, maple_mapping = validate_and_map_columns(
+            st.session_state.maple_data.copy(),
+            MAPLE_REQUIRED_COLUMNS,
+            "Maple"
+        )
+        cashify_df, cashify_mapping = validate_and_map_columns(
+            st.session_state.cashify_data.copy(),
+            CASHIFY_REQUIRED_COLUMNS,
+            "Cashify"
+        )
+        spoc_df, spoc_mapping = validate_and_map_columns(
+            st.session_state.spoc_data.copy(),
+            SPOC_REQUIRED_COLUMNS,
+            "SPOC"
+        )
 
-    # ✅ Preview loaded data
-    st.success("✅ All Excel files loaded successfully.")
-
-    st.subheader("📄 Maple Data Preview")
-    st.dataframe(st.session_state.maple_data.head())
-
-    st.subheader("📄 Cashify Data Preview")
-    st.dataframe(st.session_state.cashify_data.head())
-
-    st.subheader("📄 SPOC Data Preview")
-    st.dataframe(st.session_state.spoc_data.head())
-
+    if maple_df is None or cashify_df is None or spoc_df is None:
+        st.error(
+            "Please complete column mappings for all three datasets "
+            "(especially the required SPOC columns) before proceeding."
+        )
+        st.stop()
+        
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
         df[state_col] = df[state_col].str.strip().str.title()
@@ -843,6 +858,7 @@ def main():
         else:
             st.error(f"SPOC file not found at {spoc_df}. Please ensure the file exists.")
             raise FileNotFoundError
+        
     except Exception as e:
         st.error(f"Error loading files: {str(e)}. Please check the Excel files at uploader.")
         st.stop()
