@@ -140,7 +140,7 @@ def main():
             "(especially the required SPOC columns) before proceeding."
         )
         st.stop()
-        
+
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
         df[state_col] = df[state_col].str.strip().str.title()
@@ -835,83 +835,78 @@ def main():
         st.session_state.spoc_mapping_complete = False
         st.sidebar.success("Column mappings reset. Please reload the app to re-map columns.")
 
-    # Load data from fixed paths
-    try:
-        if os.path.exists(maple_df):
-            st.session_state.maple_data = pd.read_excel(maple_df)
-            st.session_state.column_mappings['Maple'] = {}
-        else:
-            st.error(f"Maple file not found at {maple_df}. Please ensure the file exists.")
-            raise FileNotFoundError
+    # Load data from URLs
+    with st.spinner("Loading data..."):
+        maple_df = load_excel_from_url(MAPLE_FILE_URL)
+        if maple_df is None:
+            st.error(f"Maple file failed to load from {MAPLE_FILE_URL}. Please check the URL or file access.")
+            st.stop()
+        st.session_state.maple_data = maple_df
+        st.session_state.column_mappings['Maple'] = {}
 
-        if os.path.exists(cashify_df):
-            st.session_state.cashify_data = pd.read_excel(cashify_df)
-            st.session_state.column_mappings['Cashify'] = {}
-        else:
-            st.error(f"Cashify file not found at {cashify_df}. Please ensure the file exists.")
-            raise FileNotFoundError
-        
-        if os.path.exists(spoc_df):
-            st.session_state.spoc_data = pd.read_excel(spoc_df)
-            st.session_state.column_mappings['SPOC'] = {}
-            st.session_state.spoc_mapping_complete = False
-        else:
-            st.error(f"SPOC file not found at {spoc_df}. Please ensure the file exists.")
-            raise FileNotFoundError
-        
-    except Exception as e:
-        st.error(f"Error loading files: {str(e)}. Please check the Excel files at uploader.")
-        st.stop()
+        cashify_df = load_excel_from_url(CASHIFY_FILE_URL)
+        if cashify_df is None:
+            st.error(f"Cashify file failed to load from {CASHIFY_FILE_URL}. Please check the URL or file access.")
+            st.stop()
+        st.session_state.cashify_data = cashify_df
+        st.session_state.column_mappings['Cashify'] = {}
+
+        spoc_df = load_excel_from_url(SPOC_FILE_URL)
+        if spoc_df is None:
+            st.error(f"SPOC file failed to load from {SPOC_FILE_URL}. Please check the URL or file access.")
+            st.stop()
+        st.session_state.spoc_data = spoc_df
+        st.session_state.column_mappings['SPOC'] = {}
+        st.session_state.spoc_mapping_complete = False
 
     # Validate and process data
     with st.spinner("Processing data..."):
-        if st.session_state.maple_data is not None and st.session_state.cashify_data is not None and st.session_state.spoc_data is not None:
-            maple_df, maple_mapping = validate_and_map_columns(st.session_state.maple_data.copy(), MAPLE_REQUIRED_COLUMNS, "Maple")
-            cashify_df, cashify_mapping = validate_and_map_columns(st.session_state.cashify_data.copy(), CASHIFY_REQUIRED_COLUMNS, "Cashify")
-            spoc_df, spoc_mapping = validate_and_map_columns(st.session_state.spoc_data.copy(), SPOC_REQUIRED_COLUMNS, "SPOC")
-            
-            if maple_df is None or cashify_df is None or spoc_df is None:
-                st.error("Please complete column mappings for all datasets. Ensure SPOC 'Store Name' and 'Spoc Name' are mapped to valid columns.")
-                st.stop()
-            
-            if 'Store Name' not in spoc_df.columns or 'Spoc Name' not in spoc_df.columns:
-                st.error("SPOC mapping incomplete: Store Name or Spoc Name not found after mapping. Please map these columns.")
-                st.stop()
-            st.session_state.spoc_mapping_complete = True
+        maple_df, maple_mapping = validate_and_map_columns(st.session_state.maple_data.copy(), MAPLE_REQUIRED_COLUMNS, "Maple")
+        cashify_df, cashify_mapping = validate_and_map_columns(st.session_state.cashify_data.copy(), CASHIFY_REQUIRED_COLUMNS, "Cashify")
+        spoc_df, spoc_mapping = validate_and_map_columns(st.session_state.spoc_data.copy(), SPOC_REQUIRED_COLUMNS, "SPOC")
+        
+        if maple_df is None or cashify_df is None or spoc_df is None:
+            st.error("Please complete column mappings for all datasets. Ensure SPOC 'Store Name' and 'Spoc Name' are mapped to valid columns.")
+            st.stop()
+        
+        if 'Store Name' not in spoc_df.columns or 'Spoc Name' not in spoc_df.columns:
+            st.error("SPOC mapping incomplete: Store Name or Spoc Name not found after mapping. Please map these columns.")
+            st.stop()
+        st.session_state.spoc_mapping_complete = True
 
-            # Standardize data
-            maple_df = standardize_month(maple_df)
-            cashify_df = standardize_month(cashify_df)
-            
-            maple_df = standardize_names(maple_df, product_col='Old Product Name')
-            cashify_df = standardize_names(cashify_df, product_col='Old Device Name')
-            spoc_df = standardize_names(spoc_df)
+        # Standardize data
+        maple_df = standardize_month(maple_df)
+        cashify_df = standardize_month(cashify_df)
+        
+        maple_df = standardize_names(maple_df, product_col='Old Product Name')
+        cashify_df = standardize_names(cashify_df, product_col='Old Device Name')
+        spoc_df = standardize_names(spoc_df)
 
-            maple_df = map_store_names_and_states(maple_df, spoc_df, is_maple=True)
-            cashify_df = map_store_names_and_states(cashify_df, spoc_df, is_maple=False)
+        maple_df = map_store_names_and_states(maple_df, spoc_df, is_maple=True)
+        cashify_df = map_store_names_and_states(cashify_df, spoc_df, is_maple=False)
 
-            maple_df['Created Date'] = pd.to_datetime(maple_df['Created Date'], errors='coerce')
-            cashify_df['Order Date'] = pd.to_datetime(cashify_df['Order Date'], errors='coerce')
+        maple_df['Created Date'] = pd.to_datetime(maple_df['Created Date'], errors='coerce')
+        cashify_df['Order Date'] = pd.to_datetime(cashify_df['Order Date'], errors='coerce')
 
-            # Generate SPOC IDs
-            if 'Spoc Name' in maple_df.columns and 'Store Name' in maple_df.columns and 'Store State' in maple_df.columns:
-                maple_df['SPOC_ID'] = maple_df.apply(
-                    lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
-                    if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
-                    axis=1
-                )
-            if 'Spoc Name' in cashify_df.columns and 'Store Name' in cashify_df.columns and 'Store State' in cashify_df.columns:
-                cashify_df['SPOC_ID'] = cashify_df.apply(
-                    lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
-                    if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
-                    axis=1
-                )
-            if 'Spoc Name' in spoc_df.columns and 'Store Name' in spoc_df.columns and 'Store State' in spoc_df.columns:
-                spoc_df['SPOC_ID'] = spoc_df.apply(
-                    lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
-                    if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
-                    axis=1
-                )
+        # Generate SPOC IDs
+        if 'Spoc Name' in maple_df.columns and 'Store Name' in maple_df.columns and 'Store State' in maple_df.columns:
+            maple_df['SPOC_ID'] = maple_df.apply(
+                lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
+                if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
+                axis=1
+            )
+        if 'Spoc Name' in cashify_df.columns and 'Store Name' in cashify_df.columns and 'Store State' in cashify_df.columns:
+            cashify_df['SPOC_ID'] = cashify_df.apply(
+                lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
+                if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
+                axis=1
+            )
+        if 'Spoc Name' in spoc_df.columns and 'Store Name' in spoc_df.columns and 'Store State' in spoc_df.columns:
+            spoc_df['SPOC_ID'] = spoc_df.apply(
+                lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
+                if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
+                axis=1
+            )
 
     # Navigation
     page = st.sidebar.radio("Select Page", ["Base Analysis", "Advanced Analytics"])
@@ -920,7 +915,7 @@ def main():
         base_analysis(maple_df, cashify_df, spoc_df)
     elif page == "Advanced Analytics":
         advanced_analytics(maple_df, cashify_df, spoc_df)
-
+        
 def base_analysis(maple_df, cashify_df, spoc_df):
     st.title("Maple vs Cashify Analytics Dashboard")
 
