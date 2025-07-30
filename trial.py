@@ -74,16 +74,16 @@ STATE_MAPPING = {
     'py': 'Puducherry'
 }
 
-# ✅ Correct export URLs
+# ✅ Correct export URLs from Google Sheets
 MAPLE_FILE_URL = "https://docs.google.com/spreadsheets/d/1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS/export?format=xlsx"
 CASHIFY_FILE_URL = "https://docs.google.com/spreadsheets/d/1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD/export?format=xlsx"
-SPOC_FILE_URL = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/export?format=xlsx"
+SPOC_FILE_URL    = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/export?format=xlsx"
 
 @st.cache_data
 def load_excel_from_url(url):
     try:
         response = requests.get(url)
-        response.raise_for_status()  # Raises HTTPError if the response is 4xx or 5xx
+        response.raise_for_status()  # Raises HTTPError if response is 4xx/5xx
         return pd.read_excel(BytesIO(response.content), engine="openpyxl")
     except Exception as e:
         st.error(f"❌ Error loading file from {url}\n\nDetails: {e}")
@@ -93,7 +93,7 @@ def main():
     st.set_page_config(layout="wide")
     st.title("📊 Maple vs Cashify - Trade-in Data Dashboard")
 
-    # 🔐 Load data from URLs
+    # ✅ Load Excel files into memory
     maple_df = load_excel_from_url(MAPLE_FILE_URL)
     if maple_df is None:
         st.error("❌ Maple file failed to load.")
@@ -109,12 +109,12 @@ def main():
         st.error("❌ SPOC file failed to load.")
         st.stop()
 
-    # ✅ Store in session state
+    # ✅ Save in session state to reuse elsewhere
     st.session_state.maple_data = maple_df
     st.session_state.cashify_data = cashify_df
     st.session_state.spoc_data = spoc_df
 
-    # ✅ Display success message and previews
+    # ✅ Preview loaded data
     st.success("✅ All Excel files loaded successfully.")
 
     st.subheader("📄 Maple Data Preview")
@@ -125,7 +125,7 @@ def main():
 
     st.subheader("📄 SPOC Data Preview")
     st.dataframe(spoc_df.head())
-
+    
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
         df[state_col] = df[state_col].str.strip().str.title()
