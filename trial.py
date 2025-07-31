@@ -49,7 +49,7 @@ users = {
     "manil_shetty": {"password": "Manil@2025", "name": "Manil Shetty"},
     "hari_raja" : {"password": "hari*marketing#2025", "name": "Hari Raja"},
     "hardik_nahar" : {"password": "hardik%2025", "name": "Hardik Nahar"},
-    "sohail_panjawani": {"password": "hardik%2025", "name": "Hardik Nahar"}
+    "sohail_panjawani": {"password": "sohail@2025", "name": "Hardik Nahar"}
 }
 
 # Expected columns
