@@ -47,6 +47,9 @@ users = {
     "kavish_shah": {"password": "Cashify2025$", "name": "Kavish Shah"},
     "hardik_shah": {"password": "Hardik@2025", "name": "Hardik Shah"},
     "manil_shetty": {"password": "Manil@2025", "name": "Manil Shetty"},
+    "sohail_panjwai": {"password": "Sohail#2025", "name": "Sohail Panjwai"},
+    "hari_raja": {"password": "HariR@2025!", "name": "Hari Raja"},
+    "hardik_nahar": {"password": "HardikN%2025", "name": "Hardik Nahar"}
 }
 
 # Expected columns
@@ -1763,11 +1766,11 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             if pd.isna(product_type):
                 return 'Other'
             product_type = product_type.lower()
-            if any(kw in product_type for kw in ['iphone', 'galaxy', 'pixel', 'oneplus', 'mobile', 'smartphone']):
+            if any(kw in product_type for kw in ['Apple','Android']):
                 return 'Mobile Phone'
-            elif any(kw in product_type for kw in ['ipad', 'tablet', 'tab']):
+            elif any(kw in product_type for kw in ['Apple','Android']):
                 return 'Tablet'
-            elif any(kw in product_type for kw in ['macbook', 'laptop', 'notebook']):
+            elif any(kw in product_type for kw in ['Apple','Android']):
                 return 'Laptop'
             elif 'watch' in product_type:
                 return 'Smartwatch'
@@ -1917,7 +1920,7 @@ def base_analysis(maple_df, cashify_df, spoc_df):
 
                     # Download as Excel
                     final_buffer = io.BytesIO()
-                    with pd.ExcelWriter(final_buffer, engine='xlsxwriter') as writer:
+                    with pd.ExcelWriter(final_buffer, engine='openpyxl') as writer:
                         final_loss_summary.to_excel(writer, sheet_name='Device_Loss_All_States', index=False)
 
                     st.download_button(
