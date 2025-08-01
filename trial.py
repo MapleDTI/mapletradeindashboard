@@ -775,7 +775,7 @@ def process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, 
     st.plotly_chart(fig, use_container_width=True)
 
 def base_analysis(maple_df, cashify_df, spoc_data):
-    st.title("Maple vs Cashify Analytics Dashboard")
+    st.title("Maple Digital Technologies Trade-in Analytics Dashboard")
 
     st.header("Filters")
     col1, col2, col3 = st.columns(3)
