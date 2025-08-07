@@ -47,6 +47,10 @@ users = {
     "kavish_shah": {"password": "Cashify2025$", "name": "Kavish Shah"},
     "hardik_shah": {"password": "Hardik@2025", "name": "Hardik Shah"},
     "manil_shetty": {"password": "Manil@2025", "name": "Manil Shetty"},
+    "hari_raja" : {"password": "hari*marketing#2025", "name": "Hari Raja"},
+    "hardik_nahar" : {"password": "hardik%2025", "name": "Hardik Nahar"},
+    "sohail_panjawani": {"password": "hardik%2025", "name": "Hardik Nahar"}
+    "sohail_panjawani": {"password": "sohail@2025", "name": "Hardik Nahar"}
 }
 
 # Expected columns
@@ -140,7 +144,6 @@ def main():
             "(especially the required SPOC columns) before proceeding."
         )
         st.stop()
-        
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
@@ -836,33 +839,6 @@ def main():
         st.session_state.spoc_mapping_complete = False
         st.sidebar.success("Column mappings reset. Please reload the app to re-map columns.")
 
-    # Load data from fixed paths
-    try:
-        if os.path.exists(maple_df):
-            st.session_state.maple_data = pd.read_excel(maple_df)
-            st.session_state.column_mappings['Maple'] = {}
-        else:
-            st.error(f"Maple file not found at {maple_df}. Please ensure the file exists.")
-            raise FileNotFoundError
-
-        if os.path.exists(cashify_df):
-            st.session_state.cashify_data = pd.read_excel(cashify_df)
-            st.session_state.column_mappings['Cashify'] = {}
-        else:
-            st.error(f"Cashify file not found at {cashify_df}. Please ensure the file exists.")
-            raise FileNotFoundError
-        
-        if os.path.exists(spoc_df):
-            st.session_state.spoc_data = pd.read_excel(spoc_df)
-            st.session_state.column_mappings['SPOC'] = {}
-            st.session_state.spoc_mapping_complete = False
-        else:
-            st.error(f"SPOC file not found at {spoc_df}. Please ensure the file exists.")
-            raise FileNotFoundError
-        
-    except Exception as e:
-        st.error(f"Error loading files: {str(e)}. Please check the Excel files at uploader.")
-        st.stop()
     # Load data from URLs
     with st.spinner("Loading data..."):
         maple_df = load_excel_from_url(MAPLE_FILE_URL)
@@ -889,61 +865,14 @@ def main():
 
     # Validate and process data
     with st.spinner("Processing data..."):
-        if st.session_state.maple_data is not None and st.session_state.cashify_data is not None and st.session_state.spoc_data is not None:
-            maple_df, maple_mapping = validate_and_map_columns(st.session_state.maple_data.copy(), MAPLE_REQUIRED_COLUMNS, "Maple")
-            cashify_df, cashify_mapping = validate_and_map_columns(st.session_state.cashify_data.copy(), CASHIFY_REQUIRED_COLUMNS, "Cashify")
-            spoc_df, spoc_mapping = validate_and_map_columns(st.session_state.spoc_data.copy(), SPOC_REQUIRED_COLUMNS, "SPOC")
-            
-            if maple_df is None or cashify_df is None or spoc_df is None:
-                st.error("Please complete column mappings for all datasets. Ensure SPOC 'Store Name' and 'Spoc Name' are mapped to valid columns.")
-                st.stop()
-            
-            if 'Store Name' not in spoc_df.columns or 'Spoc Name' not in spoc_df.columns:
-                st.error("SPOC mapping incomplete: Store Name or Spoc Name not found after mapping. Please map these columns.")
-                st.stop()
-            st.session_state.spoc_mapping_complete = True
-
-            # Standardize data
-            maple_df = standardize_month(maple_df)
-            cashify_df = standardize_month(cashify_df)
-            
-            maple_df = standardize_names(maple_df, product_col='Old Product Name')
-            cashify_df = standardize_names(cashify_df, product_col='Old Device Name')
-            spoc_df = standardize_names(spoc_df)
-
-            maple_df = map_store_names_and_states(maple_df, spoc_df, is_maple=True)
-            cashify_df = map_store_names_and_states(cashify_df, spoc_df, is_maple=False)
-
-            maple_df['Created Date'] = pd.to_datetime(maple_df['Created Date'], errors='coerce')
-            cashify_df['Order Date'] = pd.to_datetime(cashify_df['Order Date'], errors='coerce')
-
-            # Generate SPOC IDs
-            if 'Spoc Name' in maple_df.columns and 'Store Name' in maple_df.columns and 'Store State' in maple_df.columns:
-                maple_df['SPOC_ID'] = maple_df.apply(
-                    lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
-                    if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
-                    axis=1
-                )
-            if 'Spoc Name' in cashify_df.columns and 'Store Name' in cashify_df.columns and 'Store State' in cashify_df.columns:
-                cashify_df['SPOC_ID'] = cashify_df.apply(
-                    lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
-                    if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
-                    axis=1
-                )
-            if 'Spoc Name' in spoc_df.columns and 'Store Name' in spoc_df.columns and 'Store State' in spoc_df.columns:
-                spoc_df['SPOC_ID'] = spoc_df.apply(
-                    lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
-                    if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
-                    axis=1
-                )
         maple_df, maple_mapping = validate_and_map_columns(st.session_state.maple_data.copy(), MAPLE_REQUIRED_COLUMNS, "Maple")
         cashify_df, cashify_mapping = validate_and_map_columns(st.session_state.cashify_data.copy(), CASHIFY_REQUIRED_COLUMNS, "Cashify")
         spoc_df, spoc_mapping = validate_and_map_columns(st.session_state.spoc_data.copy(), SPOC_REQUIRED_COLUMNS, "SPOC")
-        
+
         if maple_df is None or cashify_df is None or spoc_df is None:
             st.error("Please complete column mappings for all datasets. Ensure SPOC 'Store Name' and 'Spoc Name' are mapped to valid columns.")
             st.stop()
-        
+
         if 'Store Name' not in spoc_df.columns or 'Spoc Name' not in spoc_df.columns:
             st.error("SPOC mapping incomplete: Store Name or Spoc Name not found after mapping. Please map these columns.")
             st.stop()
@@ -952,7 +881,7 @@ def main():
         # Standardize data
         maple_df = standardize_month(maple_df)
         cashify_df = standardize_month(cashify_df)
-        
+
         maple_df = standardize_names(maple_df, product_col='Old Product Name')
         cashify_df = standardize_names(cashify_df, product_col='Old Device Name')
         spoc_df = standardize_names(spoc_df)
@@ -991,7 +920,6 @@ def main():
     elif page == "Advanced Analytics":
         advanced_analytics(maple_df, cashify_df, spoc_df)
 
-        
 def base_analysis(maple_df, cashify_df, spoc_df):
     st.title("Maple vs Cashify Analytics Dashboard")
 
@@ -1653,21 +1581,21 @@ def base_analysis(maple_df, cashify_df, spoc_df):
     else:
         # Get state-wise acquisition by category
         state_category_data = maple_filtered.groupby(
-        ['Store State', 'Product Category']
+            ['Store State', 'Product Category']
         ).size().reset_index(name='Device Count')
 
         if not state_category_data.empty:
-            # Visualization: Bar chart with states on x-axis and product categories
+        # Visualization: Bar chart with states on x-axis and product categories
             fig = px.bar(
-            state_category_data,
-            x='Store State',
-            y='Device Count',
-            color='Product Category',
-            title=f"Devices Acquired by Category Across States ({selected_month} {selected_year})",
-            text='Device Count',
-            height=600,
-            barmode='group',
-            color_discrete_sequence=px.colors.qualitative.Bold
+                state_category_data,
+                x='Store State',
+                y='Device Count',
+                color='Product Category',
+                title=f"Devices Acquired by Category Across States ({selected_month} {selected_year})",
+                text='Device Count',
+                height=600,
+                barmode='group',
+                color_discrete_sequence=px.colors.qualitative.Bold
             )
             fig.update_layout(
             xaxis_title="State",
@@ -1683,8 +1611,8 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             # Raw data table
             st.subheader("Detailed Device Acquisition Data")
             st.dataframe(
-            state_category_data.sort_values(['Store State', 'Device Count'], ascending=[True, False]),
-            column_config={
+                state_category_data.sort_values(['Store State', 'Device Count'], ascending=[True, False]),
+                column_config={
                 "Product Category": st.column_config.TextColumn("Device Category", width="medium")
                 }
             )
@@ -1738,8 +1666,8 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             else:
                 # Merge data for comparison
                 comparison_df = pd.merge(
-                    cashify_prices[['Store Name', 'Spoc Name', 'Product Category', 'Product Type', 
-                               'Old Device Name', 'Initial Device Amount']],
+                cashify_prices[['Store Name', 'Spoc Name', 'Product Category', 'Product Type', 
+                                'Old Device Name', 'Initial Device Amount']],
                 maple_prices[['Store Name', 'Old Product Name', 'Maple Bid']],
                 left_on=['Store Name', 'Old Device Name'],
                 right_on=['Store Name', 'Old Product Name'],
@@ -1838,17 +1766,16 @@ def base_analysis(maple_df, cashify_df, spoc_df):
         def map_category(product_type):
             if pd.isna(product_type):
                 return 'Other'
-            product_type = product_type.lower()
+            product_type = str(product_type).lower().strip()
             if any(kw in product_type for kw in ['iphone', 'galaxy', 'pixel', 'oneplus', 'mobile', 'smartphone']):
                 return 'Mobile Phone'
-            elif any(kw in product_type for kw in ['ipad', 'tablet', 'tab']):
+            if any(kw in product_type for kw in ['ipad', 'tablet', 'tab']):
                 return 'Tablet'
-            elif any(kw in product_type for kw in ['macbook', 'laptop', 'notebook']):
+            if any(kw in product_type for kw in ['macbook', 'laptop', 'notebook']):
                 return 'Laptop'
-            elif 'watch' in product_type:
+            if 'watch' in product_type:
                 return 'Smartwatch'
-            else:
-                return 'Other'
+            return 'Other'
 
         cashify_filtered['Product Category'] = cashify_filtered['Product Type'].apply(map_category)
 
@@ -1903,18 +1830,18 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                     # Tag day type and half-month
                     weekoff_dates_flat = set(sum([spoc_weekoffs.get(spoc, []) for spoc in state_spocs], []))
                     cashify_data['Day Type'] = cashify_data['Order Date'].dt.date.apply(
-                        lambda x: 'Weekoff' if x in weekoff_dates_flat else 'Working')
+                    lambda x: 'Weekoff' if x in weekoff_dates_flat else 'Working')
                     cashify_data['Half'] = cashify_data['Day'].apply(lambda x: '1st Half' if x <= 15 else '2nd Half')
                     cashify_data['SPOC Status'] = cashify_data['Store Name'].apply(
-                        lambda x: 'No SPOC' if x in no_spoc_stores else 'SPOC Available')
+                    lambda x: 'No SPOC' if x in no_spoc_stores else 'SPOC Available')
 
                     # Summary pie chart
                     st.subheader(f"Trade-in Summary in {selected_state}")
                     day_type_counts = cashify_data.groupby(['Day Type', 'SPOC Status']).size().reset_index(name='Count')
                     fig_summary = px.pie(
-                        day_type_counts, names='Day Type', values='Count', facet_col='SPOC Status',
-                        title=f"{selected_month} {selected_year}",
-                        color_discrete_sequence=px.colors.qualitative.Bold)
+                    day_type_counts, names='Day Type', values='Count', facet_col='SPOC Status',
+                    title=f"{selected_month} {selected_year}",
+                    color_discrete_sequence=px.colors.qualitative.Bold)
                     fig_summary.update_traces(textinfo='label+percent', textfont=dict(size=12))
                     st.plotly_chart(fig_summary)
 
@@ -1929,15 +1856,15 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                     fig_cat.update_layout(xaxis_tickangle=45, font=dict(size=14))
                     st.plotly_chart(fig_cat, use_container_width=True)
 
-                    # Table & Excel download
+                # Table & Excel download
                     st.subheader("Downloadable Loss Summary")
                     half_summary = cashify_data.groupby(['Product Category', 'Day Type', 'Half', 'SPOC Status']).size().reset_index(name='Count')
                     mtd_summary = cashify_data.groupby(['Product Category', 'Day Type', 'SPOC Status']).size().reset_index(name='MTD Count')
                     loss_summary_sheet = cashify_data.groupby(
-                        ['Store State', 'Store Name', 'Spoc Name', 'Product Category', 'SPOC Status']).size().reset_index(name='Devices Lost')
+                    ['Store State', 'Store Name', 'Spoc Name', 'Product Category', 'SPOC Status']).size().reset_index(name='Devices Lost')
 
                     buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                         half_summary.to_excel(writer, sheet_name='1st_2nd_Half', index=False)
                         mtd_summary.to_excel(writer, sheet_name='MTD_Summary', index=False)
                         loss_summary_sheet.to_excel(writer, sheet_name='Detailed_by_SPOC', index=False)
@@ -1952,7 +1879,7 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                     st.subheader("Device Loss by State → Store → SPOC → Category")
                     st.dataframe(loss_summary_sheet)
 
-                    # Final Device Loss Report (All States)
+                # Final Device Loss Report (All States)
                     st.subheader("📦 Final Device Loss Summary by Working/Weekoff Days (With Device Name & Price)")
                     full_data = cashify_filtered.copy()
                     full_data['Product Category'] = full_data['Product Type'].apply(map_category)
@@ -1972,7 +1899,7 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                     if 'Initial Device Amount' in full_data.columns:
                         full_data['Initial Device Amount'] = pd.to_numeric(full_data['Initial Device Amount'], errors='coerce').fillna(0)
                     else:
-                        full_data['Initial Device Amount'] = 0  # Fallback if Initial Device Amount column is missing
+                        full_data['Initial Device Amount'] = 0
                         st.warning("Initial Device Amount column not found in data. Setting all amounts to 0.")
 
                     # Device column
@@ -1991,17 +1918,17 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                     # Display table
                     st.dataframe(final_loss_summary)
 
-                    # Download as Excel
+                # Download as Excel
                     final_buffer = io.BytesIO()
-                    with pd.ExcelWriter(final_buffer, engine='xlsxwriter') as writer:
+                    with pd.ExcelWriter(final_buffer, engine='openpyxl') as writer:
                         final_loss_summary.to_excel(writer, sheet_name='Device_Loss_All_States', index=False)
 
                     st.download_button(
-                        label="⬇️ Download Full Device Loss Report (With Device & Price)",
-                        data=final_buffer.getvalue(),
-                        file_name=f"detailed_loss_all_states_{selected_month}_{selected_year}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                    label="⬇️ Download Full Device Loss Report (With Device & Price)",
+                    data=final_buffer.getvalue(),
+                    file_name=f"detailed_loss_all_states_{selected_month}_{selected_year}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
 
 def advanced_analytics(maple_df, cashify_df, spoc_df):
     st.title("Advanced Analytics & SPOC Performance")
