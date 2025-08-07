@@ -72,11 +72,72 @@ STATE_MAPPING = {
     'py': 'Puducherry'
 }
 
-# File paths
-BASE_PATH = "/Users/maple/Desktop/SPOC Review file"
-MAPLE_FILE_PATH = os.path.join(BASE_PATH, "Actual Data Sheet.xlsx")
-CASHIFY_FILE_PATH = os.path.join(BASE_PATH, "Cashify Trade-in Sept'24 to 12th May'25.xlsx")
-SPOC_FILE_PATH = os.path.join(BASE_PATH, "SPOC Master Data Sheet.xlsx")
+# ✅ Correct export URLs from Google Sheets
+MAPLE_FILE_URL = "https://docs.google.com/spreadsheets/d/1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS/export?format=xlsx"
+CASHIFY_FILE_URL = "https://docs.google.com/spreadsheets/d/1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD/export?format=xlsx"
+SPOC_FILE_URL    = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/export?format=xlsx"
+
+@st.cache_data
+def load_excel_from_url(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raises HTTPError if response is 4xx/5xx
+        return pd.read_excel(BytesIO(response.content), engine="openpyxl")
+    except Exception as e:
+        st.error(f"❌ Error loading file from {url}\n\nDetails: {e}")
+        return None
+
+def main():
+    st.set_page_config(layout="wide")
+    st.title("📊 Maple vs Cashify - Trade-in Data Dashboard")
+
+    # 🔐 Load data from URLs (no more os.path.exists on undefined maple_df, etc.)
+    maple_df = load_excel_from_url(MAPLE_FILE_URL)
+    if maple_df is None:
+        st.error("❌ Maple file failed to load.")
+        st.stop()
+    st.session_state.maple_data = maple_df
+    st.session_state.column_mappings['Maple'] = {}
+
+    cashify_df = load_excel_from_url(CASHIFY_FILE_URL)
+    if cashify_df is None:
+        st.error("❌ Cashify file failed to load.")
+        st.stop()
+    st.session_state.cashify_data = cashify_df
+    st.session_state.column_mappings['Cashify'] = {}
+
+    spoc_df = load_excel_from_url(SPOC_FILE_URL)
+    if spoc_df is None:
+        st.error("❌ SPOC file failed to load.")
+        st.stop()
+    st.session_state.spoc_data = spoc_df
+    st.session_state.column_mappings['SPOC'] = {}
+    st.session_state.spoc_mapping_complete = False
+
+    # ✅ Now proceed with your existing validation/mapping and UI code:
+    with st.spinner("Processing data..."):
+        maple_df, maple_mapping = validate_and_map_columns(
+            st.session_state.maple_data.copy(),
+            MAPLE_REQUIRED_COLUMNS,
+            "Maple"
+        )
+        cashify_df, cashify_mapping = validate_and_map_columns(
+            st.session_state.cashify_data.copy(),
+            CASHIFY_REQUIRED_COLUMNS,
+            "Cashify"
+        )
+        spoc_df, spoc_mapping = validate_and_map_columns(
+            st.session_state.spoc_data.copy(),
+            SPOC_REQUIRED_COLUMNS,
+            "SPOC"
+        )
+
+    if maple_df is None or cashify_df is None or spoc_df is None:
+        st.error(
+            "Please complete column mappings for all three datasets "
+            "(especially the required SPOC columns) before proceeding."
+        )
+        st.stop()
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
