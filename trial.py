@@ -857,7 +857,7 @@ def main():
             st.error(f"SPOC file not found at {SPOC_FILE_PATH}. Please ensure the file exists.")
             raise FileNotFoundError
     except Exception as e:
-        st.error(f"Error loading files: {str(e)}. Please check the Excel files at {BASE_PATH}.")
+        st.error(f"Error loading files: {str(e)}. Please check the Excel files at drive location.")
         st.stop()
 
     # Validate and process data
