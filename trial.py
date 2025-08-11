@@ -49,7 +49,8 @@ users = {
     "manil_shetty": {"password": "Manil@2025", "name": "Manil Shetty"},
     "hari_raja" : {"password": "hari*marketing#2025", "name": "Hari Raja"},
     "hardik_nahar" : {"password": "hardik%2025", "name": "Hardik Nahar"},
-    "sohail_panjawani": {"password": "sohail@2025", "name": "Hardik Nahar"}
+    "sohail_panjawani": {"password": "hardik%2025", "name": "Hardik Nahar"},
+    "sohail_panjawani": {"password": "sohail@2025", "name": "Sohail Panjawani"}
 }
 
 # Expected columns
@@ -776,7 +777,6 @@ def process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, 
 
 def base_analysis(maple_df, cashify_df, spoc_data):
     st.title("Maple vs Cashify Analytics Dashboard")
-    st.title("Maple Digital Technologies Trade-in Analytics Dashboard")
 
     st.header("Filters")
     col1, col2, col3 = st.columns(3)
@@ -931,27 +931,15 @@ def base_analysis(maple_df, cashify_df, spoc_df):
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        # Get available years
         years = sorted(set(maple_df['Year'].dropna()) & set(cashify_df['Year'].dropna()))
         years = [int(year) for year in years]
-        # Set default to current year
-        current_year = date.today().year
-        default_year = current_year if current_year in years else years[-1] if years else 2025
-        selected_year = st.selectbox("Select Year", years if years else [2025], 
-                                    index=years.index(default_year) if default_year in years else 0, 
-                                    key="year_filter")
+        selected_year = st.selectbox("Select Year", years if years else [2025], key="year_filter")
 
     with col2:
-        # Get available months
         maple_months = set(maple_df['Month'].dropna())
         cashify_months = set(cashify_df['Month'].dropna())
         common_months = sorted(maple_months & cashify_months)
-        # Set default to current month
-        current_month = date.today().strftime('%B')
-        default_month = current_month if current_month in common_months else common_months[-1] if common_months else 'January'
-        selected_month = st.selectbox("Select Month", ["All"] + common_months, 
-                                     index=common_months.index(default_month) if default_month in common_months else 0, 
-                                     key="month_filter")
+        selected_month = st.selectbox("Select Month", ["All"] + common_months, key="month_filter")
 
     with col3:
         if selected_month != "All":
@@ -2223,155 +2211,36 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
         st.warning(f"No data available for {zone_filter} zone in the last 6 months")
 
 
-# 6. Monthly SPOC Target Performance
+    # 6. Monthly SPOC Target Performance
     st.header("6. SPOC Target Performance (Current vs. Previous Month)")
-
-    # Get selected year and month from Base Analysis filters
-    years = sorted(set(maple_df['Year'].dropna()) & set(cashify_df['Year'].dropna()))
-    years = [int(year) for year in years]
-    selected_year = st.session_state.get('year_filter', years[0] if years else 2025)
-
-    maple_months = set(maple_df['Month'].dropna())
-    cashify_months = set(cashify_df['Month'].dropna())
-    common_months = sorted(maple_months & cashify_months)
-    selected_month = st.session_state.get('month_filter', common_months[0] if common_months else 'January')
-
-    # Ensure a specific month is selected; default to first available month if "All"
-    if selected_month == "All" and common_months:
-        selected_month = common_months[-1]  # Use the most recent month
-        st.info(f"No specific month selected. Defaulting to {selected_month} for analysis.")
-
-    if not common_months:
-        st.warning("No common months available in Maple and Cashify data.")
-        return
-
     if not spoc_df.empty and 'SPOC_ID' in spoc_df.columns:
-        # Get current and previous month
-        months_to_compare = get_last_n_months(selected_month, selected_year, 2)
-        if len(months_to_compare) < 2:
-            st.warning("Not enough months available for comparison.")
-            return
+        months_to_compare = get_last_n_months_for_page(2)
+        if len(months_to_compare) == 2:
+            prev_month, prev_year = months_to_compare[0]
+            curr_month, curr_year = months_to_compare[1]
 
-        curr_month, curr_year = months_to_compare[1]
-        prev_month, prev_year = months_to_compare[0]
+            perf_df = spoc_df[['SPOC_ID', 'Spoc Name', 'Store Name', 'Store State']].copy().dropna(subset=['SPOC_ID'])
 
-        # Initialize performance DataFrame
-        perf_df = spoc_df[['SPOC_ID', 'Spoc Name', 'Store Name', 'Store State']].copy().dropna(subset=['SPOC_ID'])
+            for m, y, suffix in [(curr_month, curr_year, '_curr'), (prev_month, prev_year, '_prev')]:
+                target_col = f"{m} Target"
+                if target_col in spoc_df.columns:
+                    perf_df = pd.merge(perf_df, spoc_df[['SPOC_ID', target_col]], on='SPOC_ID', how='left')
+                    perf_df.rename(columns={target_col: f'Target{suffix}'}, inplace=True)
+                    ach_df = maple_df[(maple_df['Month'] == m) & (maple_df['Year'] == y)].groupby('SPOC_ID').size().reset_index(name=f'Achieved{suffix}')
+                    perf_df = pd.merge(perf_df, ach_df, on='SPOC_ID', how='left')
+                    perf_df[f'% Achieved{suffix}'] = perf_df.apply(lambda r: calculate_target_achievement(r.get(f'Achieved{suffix}', 0), r.get(f'Target{suffix}', 0)), axis=1).round(1)
 
-        # Process current and previous month
-        for m, y, suffix in [(curr_month, curr_year, '_curr'), (prev_month, prev_year, '_prev')]:
-            target_col = f"{m} Target"
-            if target_col not in spoc_df.columns:
-                st.warning(f"Target column '{target_col}' not found in SPOC data.")
-                perf_df[f'Target{suffix}'] = 0
-                perf_df[f'Achieved{suffix}'] = 0
-                perf_df[f'% Achieved{suffix}'] = 0
-                continue
+            perf_df = perf_df.fillna(0)
+            display_cols = ['Spoc Name', 'Store Name', 'Store State']
+            for suffix, month_name in [('_curr', curr_month), ('_prev', prev_month)]:
+                for prefix in ['% Achieved', 'Achieved', 'Target']:
+                    col_name = f"{prefix}{suffix}"
+                    if col_name in perf_df.columns:
+                        display_cols.append(col_name)
 
-            # Merge target data
-            perf_df = pd.merge(perf_df, spoc_df[['SPOC_ID', target_col]], on='SPOC_ID', how='left')
-            perf_df.rename(columns={target_col: f'Target{suffix}'}, inplace=True)
-
-            # Calculate achievements
-            ach_df = maple_df[(maple_df['Month'] == m) & (maple_df['Year'] == y)].groupby('SPOC_ID').size().reset_index(name=f'Achieved{suffix}')
-            perf_df = pd.merge(perf_df, ach_df, on='SPOC_ID', how='left')
-            perf_df[f'Achieved{suffix}'] = perf_df[f'Achieved{suffix}'].fillna(0)
-
-            # Calculate percentage achieved
-            perf_df[f'% Achieved{suffix}'] = perf_df.apply(
-                lambda r: calculate_target_achievement(r[f'Achieved{suffix}'], r[f'Target{suffix}'])
-                if pd.notna(r[f'Target{suffix}']) and r[f'Target{suffix}'] > 0 else 0, 
-                axis=1
-            ).round(1)
-
-        # Calculate growth (difference in % Achieved)
-        perf_df['Growth (%)'] = (perf_df['% Achieved_curr'] - perf_df['% Achieved_prev']).round(1)
-
-        # Prepare display DataFrame
-        display_cols = ['Spoc Name', 'Store Name', 'Store State', 
-                       f'Target_curr', f'Achieved_curr', f'% Achieved_curr',
-                       f'Target_prev', f'Achieved_prev', f'% Achieved_prev', 'Growth (%)']
-        display_cols = [col for col in display_cols if col in perf_df.columns]
-        perf_display_df = perf_df[display_cols].copy()
-
-        # Rename columns for display
-        perf_display_df.columns = [
-            col.replace('_curr', f' ({curr_month} {curr_year})').replace('_prev', f' ({prev_month} {prev_year})')
-            for col in perf_display_df.columns
-        ]
-
-        # Filter for SPOCs with achievements
-        perf_display_df = perf_display_df[
-            (perf_display_df[f'% Achieved ({curr_month} {curr_year})'] > 0) |
-            (perf_display_df[f'% Achieved ({prev_month} {prev_year})'] > 0)
-        ]
-
-        # Select top 15 and bottom 15 performers based on current month's achievement
-        top_15 = perf_display_df.nlargest(15, f'% Achieved ({curr_month} {curr_year})')
-        bottom_15 = perf_display_df.nsmallest(15, f'% Achieved ({curr_month} {curr_year})')
-        perf_display_df = pd.concat([top_15, bottom_15]).drop_duplicates()
-
-        if not perf_display_df.empty:
-            st.dataframe(
-                perf_display_df.sort_values(by=f'% Achieved ({curr_month} {curr_year})', ascending=False),
-                column_config={
-                    f'Target ({curr_month} {curr_year})': st.column_config.NumberColumn(format="%.0f"),
-                    f'Achieved ({curr_month} {curr_year})': st.column_config.NumberColumn(format="%.0f"),
-                    f'% Achieved ({curr_month} {curr_year})': st.column_config.NumberColumn(format="%.1f%%"),
-                    f'Target ({prev_month} {prev_year})': st.column_config.NumberColumn(format="%.0f"),
-                    f'Achieved ({prev_month} {prev_year})': st.column_config.NumberColumn(format="%.0f"),
-                    f'% Achieved ({prev_month} {prev_year})': st.column_config.NumberColumn(format="%.1f%%"),
-                    'Growth (%)': st.column_config.NumberColumn(format="%.1f%%")
-                }
-            )
-
-            # Visualization 1: Top 15 Growth
-            growth_df = perf_display_df[perf_display_df['Growth (%)'] > 0].nlargest(15, 'Growth (%)')
-            if not growth_df.empty:
-                fig_growth = px.bar(
-                    growth_df,
-                    x='Spoc Name',
-                    y='Growth (%)',
-                    color='Store State',
-                    title=f"Top 15 SPOC Growth in Target Achievement: {prev_month} {prev_year} to {curr_month} {curr_year}",
-                    text='Growth (%)',
-                    height=500
-                )
-                fig_growth.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
-                fig_growth.update_layout(xaxis_tickangle=45, showlegend=True)
-                st.plotly_chart(fig_growth, use_container_width=True)
-            else:
-                st.info("No SPOCs with positive growth for the selected months.")
-
-            # Visualization 2: Top 15 Degrowth
-            degrowth_df = perf_display_df[perf_display_df['Growth (%)'] < 0].nsmallest(15, 'Growth (%)')
-            if not degrowth_df.empty:
-                fig_degrowth = px.bar(
-                    degrowth_df,
-                    x='Spoc Name',
-                    y='Growth (%)',
-                    color='Store State',
-                    title=f"Top 15 SPOC Degrowth in Target Achievement: {prev_month} {prev_year} to {curr_month} {curr_year}",
-                    text='Growth (%)',
-                    height=500
-                )
-                fig_degrowth.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
-                fig_degrowth.update_layout(xaxis_tickangle=45, showlegend=True)
-                st.plotly_chart(fig_degrowth, use_container_width=True)
-            else:
-                st.info("No SPOCs with negative growth for the selected months.")
-
-            # Download button
-            st.download_button(
-                label="Download SPOC Performance Data as Excel",
-                data=create_excel_buffer(perf_display_df, 'SPOC Performance'),
-                file_name=f"spoc_performance_{curr_month}_{curr_year}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        else:
-            st.warning("No SPOC performance data available for the selected months.")
-    else:
-        st.warning("SPOC data or SPOC_ID column missing.")
+            perf_display_df = perf_df[display_cols]
+            perf_display_df.columns = perf_display_df.columns.str.replace('_curr', f' ({curr_month})').str.replace('_prev', f' ({prev_month})')
+            st.dataframe(perf_display_df.sort_values(by=f'% Achieved ({curr_month})', ascending=False))
 
     # 7. Store Performance Ranking & Analysis
     st.header("7. Store Performance Ranking & Analysis")
