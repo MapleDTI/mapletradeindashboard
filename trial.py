@@ -83,15 +83,35 @@ MAPLE_FILE_URL = "https://docs.google.com/spreadsheets/d/1Gq2-JHjJEvQGTNpHIKts5K
 CASHIFY_FILE_URL = "https://docs.google.com/spreadsheets/d/1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD/export?format=xlsx"
 SPOC_FILE_URL    = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/export?format=xlsx"
 
+
 @st.cache_data
-def load_excel_from_url(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raises HTTPError if response is 4xx/5xx
-        return pd.read_excel(BytesIO(response.content), engine="openpyxl")
-    except Exception as e:
-        st.error(f"❌ Error loading file from {url}\n\nDetails: {e}")
-        return None
+def load_excel_from_url(url, retries=3, timeout=30):
+    """Loads an Excel file from a given URL with retries and streaming."""
+    for attempt in range(1, retries + 1):
+        try:
+            # Stream download
+            with requests.get(url, stream=True, timeout=timeout) as r:
+                r.raise_for_status()
+                file_data = BytesIO()
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        file_data.write(chunk)
+                file_data.seek(0)
+            
+            # Try reading into DataFrame
+            return pd.read_excel(file_data, engine="openpyxl")
+        
+        except RequestException as e:
+            if attempt < retries:
+                time.sleep(2)  # wait before retry
+                continue
+            else:
+                st.error(f"❌ Network error loading file from {url}\n\nDetails: {e}")
+                return None
+        
+        except Exception as e:
+            st.error(f"❌ Failed to parse Excel from {url}\n\nDetails: {e}")
+            return None
 
 def main():
     st.set_page_config(layout="wide")
