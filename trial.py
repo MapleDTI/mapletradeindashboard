@@ -1005,6 +1005,33 @@ def base_analysis(maple_df, cashify_df, spoc_df):
 
     with col1:
         st.subheader("Maple")
+
+        # ✅ Clean Zone column once
+        if not maple_filtered.empty:
+            maple_filtered['Zone_clean'] = (
+                maple_filtered['Zone']
+                .astype(str)       # Ensure string
+                .str.strip()       # Remove leading/trailing spaces
+                .str.lower()       # Lowercase
+            )
+
+            # Map variations to standard labels
+            zone_map = {
+                'South': 'South',
+                'south': 'South',
+                'south zone': 'South',
+                'south region': 'South',
+                'West': 'West',
+                'west': 'West',
+                'west zone': 'West',
+                'west region': 'West'
+            }
+            maple_filtered['Zone_clean'] = maple_filtered['Zone_clean'].map(zone_map)
+
+        # 🔍 Debug: see what unique values remain (optional)
+        # st.write("Unique Zones after cleaning:", maple_filtered['Zone_clean'].unique())
+        else:
+            maple_filtered['Zone_clean'] = None
         # Calculate daily average
         maple_daily = maple_filtered.groupby(maple_filtered['Created Date'].dt.date).size().mean() if not maple_filtered.empty else 0
 
