@@ -1804,219 +1804,230 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             else:
                 st.warning("No comparable devices found for pricing analysis")
 
-        # Section 6: Working Day vs Weekoff Day Losses
-        st.header("6. Working Day vs Weekoff Day Losses")
+    # Section 6: Working Day vs Weekoff Day Losses
+    st.header("6. Working Day vs Weekoff Day Losses")
 
-        if selected_month == "All":
-            st.warning("Please select a specific month for analysis")
+    if selected_month == "All":
+        st.warning("Please select a specific month for analysis")
+    else:
+        # Product Category mapping (simplified for Apple/Android setup)
+        def map_category(product_type, product_category=None):
+            if pd.isna(product_type):
+                return 'Other'
+
+            # Normalize
+            product_type = str(product_type).strip().lower()
+            category = str(product_category).strip().lower() if product_category else ""
+    
+            # Allowed categories
+            valid_categories = ['mobile phone', 'laptop', 'smartwatch', 'tablet']
+            if category in valid_categories:
+                return category.title()
+
+            # Fallback: Apple/Android assumed Mobile Phone
+            if product_type in ['apple', 'android']:
+                return 'Mobile Phone'
+            else:
+                return 'Other'
+
+        # Ensure product category exists
+        if 'Product Category' in cashify_filtered.columns:
+            cashify_filtered['Product Category'] = cashify_filtered.apply(
+                lambda row: map_category(row['Product Type'], row['Product Category']), axis=1
+            )    
         else:
-            # Product Category mapping (simplified for Apple/Android setup)
-            def map_category(product_type, product_category=None):
-                if pd.isna(product_type):
-                    return 'Other'
-
-                # Normalize
-                product_type = str(product_type).strip().lower()
-                category = str(product_category).strip().lower() if product_category else ""
-
-                # Allowed categories
-                valid_categories = ['mobile phone', 'laptop', 'smartwatch', 'tablet']
-                if category in valid_categories:
-                    return category.title()
-
-                # Fallback: Apple/Android assumed Mobile Phone
-                if product_type in ['apple', 'android']:
-                    return 'Mobile Phone'
-                else:
-                    return 'Other'
-
-            # Ensure product category exists
-            if 'Product Category' in cashify_filtered.columns:
-                cashify_filtered['Product Category'] = cashify_filtered.apply(
-                    lambda row: map_category(row['Product Type'], row['Product Category']), axis=1
-                )
-            else:
-                cashify_filtered['Product Category'] = cashify_filtered['Product Type'].apply(map_category)
-
-            # Parse dates
-            cashify_filtered['Order Date'] = pd.to_datetime(cashify_filtered['Order Date'], errors='coerce')
-            cashify_filtered = cashify_filtered.dropna(subset=['Order Date'])
-            cashify_filtered['Day'] = cashify_filtered['Order Date'].dt.day
-
-            # Build calendar for selected month
-            month_num = {"January": 1, "February": 2, "March": 3, "April": 4,
+            cashify_filtered['Product Category'] = cashify_filtered['Product Type'].apply(map_category)
+    
+        # Parse dates
+        cashify_filtered['Order Date'] = pd.to_datetime(cashify_filtered['Order Date'], errors='coerce')
+        cashify_filtered = cashify_filtered.dropna(subset=['Order Date'])
+        cashify_filtered['Day'] = cashify_filtered['Order Date'].dt.day
+    
+        # Build calendar for selected month
+        month_num = {"January": 1, "February": 2, "March": 3, "April": 4,
                      "May": 5, "June": 6, "July": 7, "August": 8,
-                 "September": 9, "October": 10, "November": 11, "December": 12}
-            first_day = date(selected_year, month_num[selected_month], 1)
-            last_day = (first_day + timedelta(days=31)).replace(day=1) - timedelta(days=1)
-            all_dates = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
+                     "September": 9, "October": 10, "November": 11, "December": 12}
+        first_day = date(selected_year, month_num[selected_month], 1)
+        last_day = (first_day + timedelta(days=31)).replace(day=1) - timedelta(days=1)
+        all_dates = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
 
-            # Build SPOC weekoff date map
-            spoc_weekoffs = {}
-            if 'Weekoff Day' in spoc_df.columns and 'Spoc Name' in spoc_df.columns:
-                for _, row in spoc_df.iterrows():
-                    if pd.notna(row['Weekoff Day']) and row['Weekoff Day'] != "Vacant":
-                        weekoff_dates = [d for d in all_dates if d.strftime('%A') == row['Weekoff Day']]
-                        spoc_weekoffs[row['Spoc Name']] = weekoff_dates
+        # Build SPOC weekoff date map
+        spoc_weekoffs = {}
+        if 'Weekoff Day' in spoc_df.columns and 'Spoc Name' in spoc_df.columns:
+            for _, row in spoc_df.iterrows():
+                if pd.notna(row['Weekoff Day']) and row['Weekoff Day'] != "Vacant":
+                    weekoff_dates = [d for d in all_dates if d.strftime('%A') == row['Weekoff Day']]
+                    spoc_weekoffs[row['Spoc Name']] = weekoff_dates
 
-            if not spoc_weekoffs:
-                st.info("No weekoff data available in SPOC data")
+        if not spoc_weekoffs:
+            st.info("No weekoff data available in SPOC data")
+        else:
+            # State dropdown
+            available_states = spoc_df['Store State'].dropna().unique() if 'Store State' in spoc_df.columns else []
+            selected_state = st.selectbox("Select State", sorted(available_states), key="state_select_weekoff")
+
+            # SPOCs in state and stores without SPOCs
+            state_spocs = spoc_df[spoc_df['Store State'] == selected_state]['Spoc Name'].dropna().unique()
+            all_stores = cashify_filtered['Store Name'].dropna().unique()
+            spoc_stores = spoc_df[spoc_df['Store State'] == selected_state]['Store Name'].dropna().unique()
+            no_spoc_stores = [store for store in all_stores if store not in spoc_stores]
+
+            if len(state_spocs) == 0 and len(no_spoc_stores) == 0:
+                st.info(f"No SPOCs or stores without SPOCs found in {selected_state}")
             else:
-                # State dropdown
-                available_states = spoc_df['Store State'].dropna().unique() if 'Store State' in spoc_df.columns else []
-                selected_state = st.selectbox("Select State", sorted(available_states), key="state_select_weekoff")
+                # Filter cashify data
+                state_store_names = list(spoc_stores) + no_spoc_stores
+                cashify_data = cashify_filtered[
+                    (cashify_filtered['Store State'] == selected_state if 'Store State' in cashify_filtered.columns else True) &
+                    (cashify_filtered['Order Date'].dt.date.isin(all_dates)) &
+                    (cashify_filtered['Store Name'].isin(state_store_names))
+                ].copy()
 
-                # SPOCs in state and stores without SPOCs
-                state_spocs = spoc_df[spoc_df['Store State'] == selected_state]['Spoc Name'].dropna().unique()
-                all_stores = cashify_filtered['Store Name'].dropna().unique()
-                spoc_stores = spoc_df[spoc_df['Store State'] == selected_state]['Store Name'].dropna().unique()
-                no_spoc_stores = [store for store in all_stores if store not in spoc_stores]
-
-                if len(state_spocs) == 0 and len(no_spoc_stores) == 0:
-                    st.info(f"No SPOCs or stores without SPOCs found in {selected_state}")
+                if cashify_data.empty:
+                    st.info(f"No trade-in data available in {selected_state} for {selected_month}")
                 else:
-                    # Filter cashify data
-                    state_store_names = list(spoc_stores) + no_spoc_stores
-                    cashify_data = cashify_filtered[
-                        (cashify_filtered['Store State'] == selected_state if 'Store State' in cashify_filtered.columns else True) &
-                        (cashify_filtered['Order Date'].dt.date.isin(all_dates)) &
-                        (cashify_filtered['Store Name'].isin(state_store_names))
-                    ].copy()
-    
-                    if cashify_data.empty:
-                        st.info(f"No trade-in data available in {selected_state} for {selected_month}")
-                    else:
-                        # Tag day type and half-month
-                        weekoff_dates_flat = set(sum([spoc_weekoffs.get(spoc, []) for spoc in state_spocs], []))
-                        cashify_data['Day Type'] = cashify_data['Order Date'].dt.date.apply(
+                    # Tag day type and half-month
+                    weekoff_dates_flat = set(sum([spoc_weekoffs.get(spoc, []) for spoc in state_spocs], []))
+                    cashify_data['Day Type'] = cashify_data['Order Date'].dt.date.apply(
                         lambda x: 'Weekoff' if x in weekoff_dates_flat else 'Working'
-                        )
-                        cashify_data['Half'] = cashify_data['Day'].apply(lambda x: '1st Half' if x <= 15 else '2nd Half')
-                        cashify_data['SPOC Status'] = cashify_data['Store Name'].apply(
-                            lambda x: 'No SPOC' if x in no_spoc_stores else 'SPOC Available'
-                        )
-    
-                        # Summary pie chart
-                        st.subheader(f"Trade-in Summary in {selected_state}")
-                        day_type_counts = cashify_data.groupby(['Day Type', 'SPOC Status']).size().reset_index(name='Count')
-                        if not day_type_counts.empty:
-                            fig_summary = px.pie(
-                                day_type_counts, names='Day Type', values='Count', facet_col='SPOC Status',
-                                title=f"{selected_month} {selected_year}",
-                                color_discrete_sequence=px.colors.qualitative.Bold
-                            )
-                            fig_summary.update_traces(textinfo='label+percent', textfont=dict(size=12))
-                            st.plotly_chart(fig_summary)
+                    )
+                    cashify_data['Half'] = cashify_data['Day'].apply(lambda x: '1st Half' if x <= 15 else '2nd Half')
+                    cashify_data['SPOC Status'] = cashify_data['Store Name'].apply(
+                        lambda x: 'No SPOC' if x in no_spoc_stores else 'SPOC Available'
+                    )
 
-                        # Category vs Day Type vs Half-month
-                        st.subheader("Device Category Losses by Day Type, Half & SPOC Status")
-                        agg = cashify_data.groupby(
-                            ['Product Category', 'Day Type', 'Half', 'SPOC Status']
-                        ).size().reset_index(name='Count')
+                    # Ensure Price Difference is numeric (fix for TypeError)
+                    if 'Price Difference' in cashify_data.columns:
+                        cashify_data['Price Difference'] = pd.to_numeric(cashify_data['Price Difference'], errors='coerce').fillna(0)
+                        top_devices = cashify_data.nlargest(20, 'Price Difference')
+                    else:
+                        st.warning("Price Difference column not found in data.")
+
+                    # Summary pie chart
+                    st.subheader(f"Trade-in Summary in {selected_state}")
+                    day_type_counts = cashify_data.groupby(['Day Type', 'SPOC Status']).size().reset_index(name='Count')
+                    if not day_type_counts.empty:
+                        fig_summary = px.pie(
+                            day_type_counts, names='Day Type', values='Count', facet_col='SPOC Status',
+                            title=f"{selected_month} {selected_year}",
+                            color_discrete_sequence=px.colors.qualitative.Bold
+                        )
+                        fig_summary.update_traces(textinfo='label+percent', textfont=dict(size=12))
+                        st.plotly_chart(fig_summary)
     
-                        if not agg.empty:
-                            fig_cat = px.bar(
+                    # Category vs Day Type vs Half-month
+                    st.subheader("Device Category Losses by Day Type, Half & SPOC Status")
+                    agg = cashify_data.groupby(
+                        ['Product Category', 'Day Type', 'Half', 'SPOC Status']
+                    ).size().reset_index(name='Count')
+
+                    if not agg.empty:
+                        fig_cat = px.bar(
                             agg, x='Product Category', y='Count',
                             color='Day Type', facet_col='Half', facet_row='SPOC Status', barmode='group',
                             title="Device Category Losses (1st vs 2nd Half)",
                             color_discrete_sequence=px.colors.qualitative.Bold
-                            )
-                            fig_cat.update_layout(xaxis_tickangle=45, font=dict(size=14))
-                            st.plotly_chart(fig_cat, use_container_width=True)
-                        else:
-                            st.info("No category loss data available.")
+                        )
+                        fig_cat.update_layout(xaxis_tickangle=45, font=dict(size=14))
+                        st.plotly_chart(fig_cat, use_container_width=True)
+                    else:
+                        st.info("No category loss data available.")
 
-                        # Table & Excel download
-                        st.subheader("Downloadable Loss Summary")
-                        half_summary = cashify_data.groupby(
-                            ['Product Category', 'Day Type', 'Half', 'SPOC Status']
-                        ).size().reset_index(name='Count')
-                        mtd_summary = cashify_data.groupby(
+                    # Table & Excel download
+                    st.subheader("Downloadable Loss Summary")
+                    half_summary = cashify_data.groupby(
+                        ['Product Category', 'Day Type', 'Half', 'SPOC Status']
+                    ).size().reset_index(name='Count')
+                    mtd_summary = cashify_data.groupby(
                         ['Product Category', 'Day Type', 'SPOC Status']
-                        ).size().reset_index(name='MTD Count')
-                        loss_summary_sheet = cashify_data.groupby(
+                    ).size().reset_index(name='MTD Count')
+                    loss_summary_sheet = cashify_data.groupby(
                         ['Store State', 'Store Name', 'Spoc Name', 'Product Category', 'SPOC Status']
-                        ).size().reset_index(name='Devices Lost')
+                    ).size().reset_index(name='Devices Lost')
 
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                            half_summary.to_excel(writer, sheet_name='1st_2nd_Half', index=False)
-                            mtd_summary.to_excel(writer, sheet_name='MTD_Summary', index=False)
-                            loss_summary_sheet.to_excel(writer, sheet_name='Detailed_by_SPOC', index=False)
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        half_summary.to_excel(writer, sheet_name='1st_2nd_Half', index=False)
+                        mtd_summary.to_excel(writer, sheet_name='MTD_Summary', index=False)
+                        loss_summary_sheet.to_excel(writer, sheet_name='Detailed_by_SPOC', index=False)
+
+                    buffer.seek(0)
+                    st.download_button(
+                        label="Download Excel Report",
+                        data=buffer,
+                        file_name=f"daytype_loss_{selected_state}_{selected_month}_{selected_year}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+
+                    st.subheader("Device Loss by State → Store → SPOC → Category")
+                    st.dataframe(loss_summary_sheet)
     
-                        buffer.seek(0)
-                        st.download_button(
-                            label="Download Excel Report",
-                            data=buffer,
-                            file_name=f"daytype_loss_{selected_state}_{selected_month}_{selected_year}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )    
-    
-                        st.subheader("Device Loss by State → Store → SPOC → Category")
-                        st.dataframe(loss_summary_sheet)
-    
-                        # Final Device Loss Report (All States)
-                        st.subheader("📦 Final Device Loss Summary by Working/Weekoff Days (With Device Name & Price)")
-                        full_data = cashify_filtered.copy()
-                        if 'Product Category' in full_data.columns:
-                            full_data['Product Category'] = full_data.apply(
+                    # Final Device Loss Report (All States)
+                    st.subheader("📦 Final Device Loss Summary by Working/Weekoff Days (With Device Name & Price)")
+                    full_data = cashify_filtered.copy()
+                    if 'Product Category' in full_data.columns:
+                        full_data['Product Category'] = full_data.apply(
                             lambda row: map_category(row['Product Type'], row['Product Category']), axis=1
-                            )
-                        else:
-                            full_data['Product Category'] = full_data['Product Type'].apply(map_category)
-
-                        full_data['Order Date'] = pd.to_datetime(full_data['Order Date'], errors='coerce')
-                        full_data = full_data.dropna(subset=['Order Date'])
-                        full_data['Day'] = full_data['Order Date'].dt.day
+                        )
+                    else:
+                        full_data['Product Category'] = full_data['Product Type'].apply(map_category)
     
-                        # Compute Day Type
-                        all_spocs = spoc_df['Spoc Name'].dropna().unique()
-                        weekoff_dates_flat_all = set(sum([spoc_weekoffs.get(spoc, []) for spoc in all_spocs], []))
-                        full_data['Day Type'] = full_data['Order Date'].dt.date.apply(
-                            lambda x: 'Weekoff' if x in weekoff_dates_flat_all else 'Working'
-                        )
-                        full_data['SPOC Status'] = full_data['Store Name'].apply(
-                            lambda x: 'No SPOC' if x not in spoc_df['Store Name'].dropna().unique() else 'SPOC Available'
-                        )
+                    full_data['Order Date'] = pd.to_datetime(full_data['Order Date'], errors='coerce')
+                    full_data = full_data.dropna(subset=['Order Date'])
+                    full_data['Day'] = full_data['Order Date'].dt.day
 
-                        # Handle Initial Device Amount column safely
-                        full_data['Initial Device Amount'] = pd.to_numeric(
-                            full_data.get('Initial Device Amount', 0), errors='coerce'
+                    # Compute Day Type
+                    all_spocs = spoc_df['Spoc Name'].dropna().unique()
+                    weekoff_dates_flat_all = set(sum([spoc_weekoffs.get(spoc, []) for spoc in all_spocs], []))
+                    full_data['Day Type'] = full_data['Order Date'].dt.date.apply(
+                        lambda x: 'Weekoff' if x in weekoff_dates_flat_all else 'Working'
+                    )    
+                    full_data['SPOC Status'] = full_data['Store Name'].apply(
+                        lambda x: 'No SPOC' if x not in spoc_df['Store Name'].dropna().unique() else 'SPOC Available'
+                    )    
+
+                    # Handle Initial Device Amount column safely
+                    full_data['Initial Device Amount'] = pd.to_numeric(
+                        full_data.get('Initial Device Amount', 0), errors='coerce'
                         ).fillna(0)
-    
-                        # Detect device column
-                        if 'Device Name' in full_data.columns:
-                                device_column = 'Device Name'
-                        elif 'Old Device Name' in full_data.columns:
-                            device_column = 'Old Device Name'
-                        else:
-                            device_column = 'Device'
-                            full_data['Device'] = "Unknown Device"
 
-                        # Final grouping
-                        group_cols = ['Store State', 'Store Name', 'Spoc Name',
-                                      'Product Type', 'Product Category', 'Day Type', 'SPOC Status', device_column]
+                    # Detect device column
+                    if 'Device Name' in full_data.columns:
+                        device_column = 'Device Name'
+                    elif 'Old Device Name' in full_data.columns:
+                        device_column = 'Old Device Name'
+                    else:
+                        device_column = 'Device'
+                        full_data['Device'] = "Unknown Device"
     
-                        final_loss_summary = full_data.groupby(group_cols).agg(
-                            Devices_Lost=('Order Date', 'count'),
-                            Total_Value_Lost=('Initial Device Amount', 'sum')
-                        ).reset_index()
+                    # Ensure Price Difference is numeric for final summary
+                    if 'Price Difference' in full_data.columns:
+                        full_data['Price Difference'] = pd.to_numeric(full_data['Price Difference'], errors='coerce').fillna(0)
     
-                        if final_loss_summary.empty:
-                            st.info("No device loss data available for final summary.")
-                        else:
-                            st.dataframe(final_loss_summary)
-    
-                            final_buffer = io.BytesIO()
-                            with pd.ExcelWriter(final_buffer, engine='xlsxwriter') as writer:
-                                final_loss_summary.to_excel(writer, sheet_name='Device_Loss_All_States', index=False)
-    
-                            final_buffer.seek(0)
-                            st.download_button(
-                                label="⬇️ Download Full Device Loss Report (With Device & Price)",
-                                data=final_buffer,
-                                file_name=f"detailed_loss_all_states_{selected_month}_{selected_year}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    # Final grouping
+                    group_cols = ['Store State', 'Store Name', 'Spoc Name',
+                                  'Product Type', 'Product Category', 'Day Type', 'SPOC Status', device_column]
+
+                    final_loss_summary = full_data.groupby(group_cols).agg(
+                        Devices_Lost=('Order Date', 'count'),
+                        Total_Value_Lost=('Initial Device Amount', 'sum')
+                    ).reset_index()
+
+                    if final_loss_summary.empty:
+                        st.info("No device loss data available for final summary.")
+                    else:
+                        st.dataframe(final_loss_summary)
+
+                        final_buffer = io.BytesIO()
+                        with pd.ExcelWriter(final_buffer, engine='xlsxwriter') as writer:
+                            final_loss_summary.to_excel(writer, sheet_name='Device_Loss_All_States', index=False)
+
+                        final_buffer.seek(0)
+                        st.download_button(
+                            label="⬇️ Download Full Device Loss Report (With Device & Price)",
+                            data=final_buffer,
+                            file_name=f"detailed_loss_all_states_{selected_month}_{selected_year}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )    
     
 def advanced_analytics(maple_df, cashify_df, spoc_df):
