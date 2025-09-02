@@ -1619,31 +1619,36 @@ def base_analysis(maple_df, cashify_df, spoc_df):
 
     # Ensure Product Category is defined
     if 'Product Category' not in maple_filtered.columns and 'Product Type' in maple_filtered.columns:
-        categories = {'Mobile Phone': 'Mobile Phone', 'Tablet': 'Tablet', 'Laptop': 'Laptop', 'Smartwatch': 'Smartwatch'}
+        categories = {
+        'Mobile Phone': 'Mobile Phone',
+        'Tablet': 'Tablet',
+        'Laptop': 'Laptop',
+        'Smartwatch': 'Smartwatch'
+        }
         maple_filtered['Product Category'] = maple_filtered['Product Type'].map(categories).fillna('Unknown')
     elif 'Product Category' not in maple_filtered.columns:
         maple_filtered['Product Category'] = 'Unknown'
 
     if 'Store State' not in maple_filtered.columns or 'Product Category' not in maple_filtered.columns:
         st.error("Required columns (Store State or Product Category) missing in Maple data")
-    else:
-        # Get state-wise acquisition by category
+    else:   
+        # Create grouped data for visualization
         state_category_data = maple_filtered.groupby(
             ['Store State', 'Product Category']
         ).size().reset_index(name='Device Count')
 
         if not state_category_data.empty:
-        # Visualization: Bar chart with states on x-axis and product categories
+            # Visualization: Bar chart with states on x-axis and product categories
             fig = px.bar(
-                state_category_data,
-                x='Store State',
-                y='Device Count',
-                color='Product Category',
-                title=f"Devices Acquired by Category Across States ({selected_month} {selected_year})",
-                text='Device Count',
-                height=600,
-                barmode='group',
-                color_discrete_sequence=px.colors.qualitative.Bold
+            state_category_data,
+            x='Store State',
+            y='Device Count',
+            color='Product Category',
+            title=f"Devices Acquired by Category Across States ({selected_month} {selected_year})",
+            text='Device Count',
+            height=600,
+            barmode='group',
+            color_discrete_sequence=px.colors.qualitative.Bold
             )
             fig.update_layout(
             xaxis_title="State",
@@ -1651,30 +1656,37 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             legend_title="Device Category",
             xaxis_tickangle=45,
             font=dict(size=14),
-            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="white", bordercolor="Black", borderwidth=1)
+            legend=dict(
+                yanchor="top", y=0.99,
+                xanchor="left", x=0.01,
+                bgcolor="white", bordercolor="Black", borderwidth=1
+                )
             )
             fig.update_traces(textposition='auto', textfont=dict(size=12))
             st.plotly_chart(fig, use_container_width=True)
 
-            # Raw data table
-            st.subheader("Detailed Device Acquisition Data")
-            st.dataframe(
-                state_category_data.sort_values(['Store State', 'Device Count'], ascending=[True, False]),
-                column_config={
-                "Product Category": st.column_config.TextColumn("Device Category", width="medium")
-                }
+            # Pivot table for state vs category
+            pivot_table = (
+                state_category_data
+                .pivot(index='Store State', columns='Product Category', values='Device Count')
+                .fillna(0)
+                .astype(int)
+                .reset_index()
             )
 
-            # Download button
+            st.subheader("Pivot Table: Device Acquisition by State and Category")
+            st.dataframe(pivot_table)
+
+            # Download button for pivot table
             st.download_button(
-            label="Download State-wise Acquisition Data",
-            data=state_category_data.to_csv(index=False).encode('utf-8'),
-            file_name=f"state_category_acquisition_{selected_month}_{selected_year}.csv",
-            mime="text/csv"
+                label="Download Pivot Table (State vs Category)",
+                data=pivot_table.to_csv(index=False).encode('utf-8'),
+                file_name=f"state_category_pivot_{selected_month}_{selected_year}.csv",
+                mime="text/csv"
             )
         else:
             st.warning("No data available for state-wise category analysis")
-
+            
     # Section 5: Detailed Pricing Comparison
     st.header("5. Pricing Comparison for Lost Devices")
 
