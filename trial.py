@@ -14,6 +14,7 @@ import calendar
 import uuid
 import gdown 
 import requests
+import time
 
 
 # Configure logging
@@ -29,12 +30,14 @@ if 'cashify_data' not in st.session_state:
     st.session_state.cashify_data = None
 if 'spoc_data' not in st.session_state:
     st.session_state.spoc_data = None
+if 'lob_sales_data' not in st.session_state:
+    st.session_state.lob_sales_data = None
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 if 'username' not in st.session_state:
     st.session_state.username = None
 if 'column_mappings' not in st.session_state:
-    st.session_state.column_mappings = {'Maple': {}, 'Cashify': {}, 'SPOC': {}}
+    st.session_state.column_mappings = {'Maple': {}, 'Cashify': {}, 'SPOC': {}, 'LOB_Sales': {}}
 if 'spoc_mapping_complete' not in st.session_state:
     st.session_state.spoc_mapping_complete = False
 if 'spoc_ids' not in st.session_state:
@@ -48,9 +51,8 @@ users = {
     "kavish_shah": {"password": "Cashify2025$", "name": "Kavish Shah"},
     "hardik_shah": {"password": "Hardik@2025", "name": "Hardik Shah"},
     "manil_shetty": {"password": "Manil@2025", "name": "Manil Shetty"},
-    "hari_raja" : {"password": "hari*marketing#2025", "name": "Hari Raja"},
-    "hardik_nahar" : {"password": "hardik%2025", "name": "Hardik Nahar"},
-    "sohail_panjawani": {"password": "hardik%2025", "name": "Hardik Nahar"},
+    "hari_raja": {"password": "hari*marketing#2025", "name": "Hari Raja"},
+    "hardik_nahar": {"password": "hardik%2025", "name": "Hardik Nahar"},
     "sohail_panjawani": {"password": "sohail@2025", "name": "Sohail Panjawani"}
 }
 
@@ -66,6 +68,7 @@ CASHIFY_REQUIRED_COLUMNS = [
     'Old Device Name', 'New Device IMEI', 'New Device Name', 'Initial Device Amount'
 ]
 SPOC_REQUIRED_COLUMNS = ['Spoc Name', 'Store State', 'Zone', 'Weekoff Day', 'Store Name']
+LOB_SALES_REQUIRED_COLUMNS = ['Store Name', 'Store Code', 'AirPods', 'iPad', 'iPhone', 'Mac', 'Watch', 'Grand Total']
 
 # Enhanced state name normalization
 STATE_MAPPING = {
@@ -79,18 +82,17 @@ STATE_MAPPING = {
     'py': 'Puducherry'
 }
 
-# ✅ Correct export URLs from Google Sheets
+# File URLs
 MAPLE_FILE_URL = "https://docs.google.com/spreadsheets/d/1Gq2-JHjJEvQGTNpHIKts5KcLjPZOkzNS/export?format=xlsx"
 CASHIFY_FILE_URL = "https://docs.google.com/spreadsheets/d/1d6DzTul-3sadHf1jcXe2ybG8oXLnvjfD/export?format=xlsx"
-SPOC_FILE_URL    = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/export?format=xlsx"
-
+SPOC_FILE_URL = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/export?format=xlsx"
+LOB_SALES_FILE_URL = "https://docs.google.com/spreadsheets/d/1FeVIVLZVlQo6vk1fINylLrwgp5gKZdv0/export?format=xlsx"
 
 @st.cache_data
 def load_excel_from_url(url, retries=3, timeout=30):
     """Loads an Excel file from a given URL with retries and streaming."""
     for attempt in range(1, retries + 1):
         try:
-            # Stream download
             with requests.get(url, stream=True, timeout=timeout) as r:
                 r.raise_for_status()
                 file_data = BytesIO()
@@ -98,73 +100,13 @@ def load_excel_from_url(url, retries=3, timeout=30):
                     if chunk:
                         file_data.write(chunk)
                 file_data.seek(0)
-            
-            # Try reading into DataFrame
             return pd.read_excel(file_data, engine="openpyxl")
-        
-        except RequestException as e:
-            if attempt < retries:
-                time.sleep(2)  # wait before retry
-                continue
-            else:
-                st.error(f"❌ Network error loading file from {url}\n\nDetails: {e}")
-                return None
-        
         except Exception as e:
-            st.error(f"❌ Failed to parse Excel from {url}\n\nDetails: {e}")
+            if attempt < retries:
+                time.sleep(2)
+                continue
+            st.error(f"Failed to load file from {url}: {e}")
             return None
-
-def main():
-    st.set_page_config(layout="wide")
-    st.title("📊 Maple vs Cashify - Trade-in Data Dashboard")
-
-    # 🔐 Load data from URLs (no more os.path.exists on undefined maple_df, etc.)
-    maple_df = load_excel_from_url(MAPLE_FILE_URL)
-    if maple_df is None:
-        st.error("❌ Maple file failed to load.")
-        st.stop()
-    st.session_state.maple_data = maple_df
-    st.session_state.column_mappings['Maple'] = {}
-
-    cashify_df = load_excel_from_url(CASHIFY_FILE_URL)
-    if cashify_df is None:
-        st.error("❌ Cashify file failed to load.")
-        st.stop()
-    st.session_state.cashify_data = cashify_df
-    st.session_state.column_mappings['Cashify'] = {}
-
-    spoc_df = load_excel_from_url(SPOC_FILE_URL)
-    if spoc_df is None:
-        st.error("❌ SPOC file failed to load.")
-        st.stop()
-    st.session_state.spoc_data = spoc_df
-    st.session_state.column_mappings['SPOC'] = {}
-    st.session_state.spoc_mapping_complete = False
-
-    # ✅ Now proceed with your existing validation/mapping and UI code:
-    with st.spinner("Processing data..."):
-        maple_df, maple_mapping = validate_and_map_columns(
-            st.session_state.maple_data.copy(),
-            MAPLE_REQUIRED_COLUMNS,
-            "Maple"
-        )
-        cashify_df, cashify_mapping = validate_and_map_columns(
-            st.session_state.cashify_data.copy(),
-            CASHIFY_REQUIRED_COLUMNS,
-            "Cashify"
-        )
-        spoc_df, spoc_mapping = validate_and_map_columns(
-            st.session_state.spoc_data.copy(),
-            SPOC_REQUIRED_COLUMNS,
-            "SPOC"
-        )
-
-    if maple_df is None or cashify_df is None or spoc_df is None:
-        st.error(
-            "Please complete column mappings for all three datasets "
-            "(especially the required SPOC columns) before proceeding."
-        )
-        st.stop()
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
@@ -181,7 +123,7 @@ def find_similar_columns(df_columns, expected_col):
 
 def validate_and_map_columns(df, required_columns, df_name):
     if df.empty or df.columns.empty:
-        st.error(f"{df_name} dataset is empty or has no columns. Please check the file at above.")
+        st.error(f"{df_name} dataset is empty or has no columns. Please check the file.")
         return None, {}
 
     df_columns = df.columns.tolist()
@@ -241,8 +183,8 @@ def validate_and_map_columns(df, required_columns, df_name):
         st.error(f"Critical columns missing in {df_name} after mapping: {', '.join(missing_critical)}.")
         return None, column_mapping
 
-    if df_name == "Cashify" and 'Spoc Name' not in df.columns and ' Partner Name' in df.columns:
-        df['Spoc Name'] = df[' Partner Name']
+    if df_name == "Cashify" and 'Spoc Name' not in df.columns and 'Partner Name' in df.columns:
+        df['Spoc Name'] = df['Partner Name']
 
     logging.info(f"{df_name} Columns After Mapping: {', '.join(df.columns.tolist())}")
 
@@ -254,8 +196,8 @@ def standardize_month(df, month_col='Month'):
         return df
     month_mapping = {
         1: "January", 2: "February", 3: "March", 4: "April", 5: "May", 6: "June",
-        7: "July","7": "July","jul": "July","july": "July","July": "July",
-    8: "August", 9: "September", 10: "October", 11: "November", 12: "December",
+        7: "July", "7": "July", "jul": "July", "july": "July", "July": "July",
+        8: "August", 9: "September", 10: "October", 11: "November", 12: "December",
         "jan": "January", "feb": "February", "mar": "March", "apr": "April", "may": "May", "jun": "June",
         "jul": "July", "aug": "August", "sep": "September", "oct": "October", "nov": "November", "dec": "December"
     }
@@ -400,22 +342,17 @@ def get_last_n_months(current_month, current_year, n=3):
         "May": 5, "June": 6, "July": 7, "August": 8, 
         "September": 9, "October": 10, "November": 11, "December": 12
     }
-
     if current_month == "All":
         current_month = datetime.now().strftime("%B")
-
     if current_month not in month_num:
         raise ValueError(f"Invalid month: {current_month}. Must be one of {list(month_num.keys())}")
-
     reverse_month = {v: k for k, v in month_num.items()}
     current_month_num = month_num[current_month]
     months = []
-
     for i in range(n):
         month = (current_month_num - i) % 12 or 12
         year_adjust = current_year - ((current_month_num - i) // 12)
         months.append((reverse_month[month], year_adjust))
-
     return sorted(months, key=lambda x: (x[1], month_num[x[0]]))
 
 def get_last_n_weeks(selected_month, selected_year, spoc, n=4):
@@ -438,9 +375,7 @@ def get_last_n_weeks(selected_month, selected_year, spoc, n=4):
 def categorize_product_type(product_type):
     if pd.isna(product_type):
         return 'Other'
-
     product_type = str(product_type).lower().strip()
-
     if any(x in product_type for x in ['mobile', 'phone']):
         return 'Mobile Phone'
     elif 'laptop' in product_type:
@@ -472,7 +407,6 @@ def login():
     st.sidebar.header("Login")
     username = st.sidebar.text_input("Username")
     password = st.sidebar.text_input("Password", type="password")
-
     if st.sidebar.button("Login"):
         if username in users and users[username]["password"] == password:
             st.session_state.authenticated = True
@@ -485,7 +419,7 @@ def logout():
     if st.sidebar.button("Logout"):
         st.session_state.authenticated = False
         st.session_state.username = None
-        st.session_state.column_mappings = {'Maple': {}, 'Cashify': {}, 'SPOC': {}}
+        st.session_state.column_mappings = {'Maple': {}, 'Cashify': {}, 'SPOC': {}, 'LOB_Sales': {}}
         st.session_state.spoc_mapping_complete = False
         st.session_state.spoc_ids = {}
         st.sidebar.success("Logged out successfully")
@@ -505,65 +439,46 @@ def get_last_n_months_for_page(n):
 def process_spoc_weekoffs(spoc_file_path, selected_year, selected_month):
     if 'Weekoff Day' not in st.session_state.spoc_data.columns or selected_month == "All":
         return {}
-
     spoc_weekoffs = {}
     for _, row in st.session_state.spoc_data.iterrows():
         if pd.notna(row['Weekoff Day']) and row['Weekoff Day'] != "Vacant":
             spoc_weekoffs[row['Spoc Name']] = get_weekoffs(selected_year, selected_month, row['Weekoff Day'])
-
     logging.info(f"Processed weekoffs for {len(spoc_weekoffs)} SPOCs")
     return spoc_weekoffs
 
-def process_devices_lost_section(maple_filtered, cashify_filtered, spoc_data, selected_year, selected_month, selected_day):
+def process_devices_lost_section(maple_filtered, cashify_filtered, spoc_data, selected_year, selected_month):
     st.header("5. Devices Lost on SPOC Weekoff Days")
-
     if selected_month == "All":
         st.warning("Please select a specific month for weekoff analysis")
         return
-
     spoc_weekoffs = process_spoc_weekoffs(spoc_data, selected_year, selected_month)
-
     if not spoc_weekoffs:
         st.info("No devices lost on weekoff days (no weekoff data available)")
         return
-
-    # Get all SPOCs with weekoff data
     spoc_list = list(spoc_weekoffs.keys())
     selected_spoc = st.selectbox("Select SPOC", spoc_list, key="spoc_weekoff_select")
-
     if selected_spoc not in spoc_weekoffs:
         st.info("No weekoff days for selected SPOC")
         return
-
     weekoff_dates = spoc_weekoffs[selected_spoc]
     if not weekoff_dates:
         st.info(f"No weekoff days for {selected_spoc} in {selected_month}")
         return
-
-    # Get stores for this SPOC
     spoc_stores = maple_filtered[maple_filtered['Spoc Name'] == selected_spoc]['Store Name'].unique()
     if not spoc_stores:
         st.info(f"No stores found for SPOC {selected_spoc}")
         return
-
-    store = spoc_stores[0]  # Assuming one store per SPOC
-
-    # Get Cashify devices lost on weekoff days
+    store = spoc_stores[0]
     cashify_losses = cashify_filtered[
         (cashify_filtered['Store Name'] == store) &
         (cashify_filtered['Order Date'].dt.date.isin(weekoff_dates))
     ]
-
     if cashify_losses.empty:
         st.info(f"No devices lost on weekoff days for {selected_spoc} at {store}")
         return
-
-    # Group by product category
     losses_by_category = cashify_losses.groupby('Product Category').size().reset_index(name='Count')
-
     st.write(f"**Devices lost on {selected_spoc}'s weekoff days at {store}:**")
     st.dataframe(losses_by_category)
-
     if not losses_by_category.empty:
         fig = px.bar(
             losses_by_category,
@@ -576,58 +491,40 @@ def process_devices_lost_section(maple_filtered, cashify_filtered, spoc_data, se
 
 def process_working_day_losses(maple_filtered, cashify_filtered, spoc_data, selected_year, selected_month):
     st.header("6. Working Day Losses")
-
     if selected_month == "All":
         st.warning("Please select a specific month for working day analysis")
         return
-
     spoc_weekoffs = process_spoc_weekoffs(spoc_data, selected_year, selected_month)
-
     if not spoc_weekoffs:
         st.info("No working day losses data available (no weekoff data for comparison)")
         return
-
     spoc_list = list(spoc_weekoffs.keys())
     selected_spoc = st.selectbox("Select SPOC", spoc_list, key="spoc_working_select")
-
     if selected_spoc not in spoc_weekoffs:
         st.info("No data for selected SPOC")
         return
-
     weekoff_dates = spoc_weekoffs[selected_spoc]
     spoc_stores = maple_filtered[maple_filtered['Spoc Name'] == selected_spoc]['Store Name'].unique()
-
     if not spoc_stores:
         st.info(f"No stores found for SPOC {selected_spoc}")
         return
-
     store = spoc_stores[0]
-
-    # Get all dates in the month that aren't weekoff days
     month_num = {"January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6,
                  "July": 7, "August": 8, "September": 9, "October": 10, "November": 11, "December": 12}
     first_day = date(selected_year, month_num[selected_month], 1)
     last_day = (first_day + timedelta(days=31)).replace(day=1) - timedelta(days=1)
-
     all_dates = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
     working_dates = [d for d in all_dates if d not in weekoff_dates]
-
-    # Get Cashify devices lost on working days
     cashify_losses = cashify_filtered[
         (cashify_filtered['Store Name'] == store) &
         (cashify_filtered['Order Date'].dt.date.isin(working_dates))
     ]
-
     if cashify_losses.empty:
         st.info(f"No working day losses for {selected_spoc} at {store}")
         return
-
-    # Group by product category
     losses_by_category = cashify_losses.groupby('Product Category').size().reset_index(name='Count')
-
     st.write(f"**Working day losses for {selected_spoc} at {store}:**")
     st.dataframe(losses_by_category)
-
     if not losses_by_category.empty:
         fig = px.bar(
             losses_by_category,
@@ -640,36 +537,23 @@ def process_working_day_losses(maple_filtered, cashify_filtered, spoc_data, sele
 
 def process_tradein_losses(cashify_filtered, selected_year, selected_month):
     st.header("7. Trade-ins Lost to Cashify by State")
-
     south_states = ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry']
-
     if selected_month == "All":
         st.warning("Please select a specific month for trade-in analysis")
         return
-
-    # Standardize state names
     cashify_filtered = standardize_state_names(cashify_filtered)
-
-    # Filter for south states and completed orders
     status_filter = cashify_filtered['Order Status'] == 'Completed' if 'Order Status' in cashify_filtered.columns else pd.Series([True] * len(cashify_filtered))
-
     tradein_losses = cashify_filtered[
         (cashify_filtered['Store State'].isin(south_states)) &
         (cashify_filtered['Month'] == selected_month) &
         (cashify_filtered['Year'] == selected_year) &
         status_filter
     ]
-
     if tradein_losses.empty:
         st.info("No trade-in losses data available for selected period")
         return
-
-    # Enhanced product categorization
     tradein_losses['Product Category'] = tradein_losses['Product Type'].apply(categorize_product_type)
-
-    # 1. Trade-in Losses by State
     losses_by_state = tradein_losses.groupby('Store State').size().reset_index(name='Count')
-
     if not losses_by_state.empty:
         st.subheader("Trade-in Losses by State")
         fig_state = px.bar(
@@ -680,10 +564,7 @@ def process_tradein_losses(cashify_filtered, selected_year, selected_month):
             title=f"Trade-ins Lost to Cashify by State ({selected_month} {selected_year})"
         )
         st.plotly_chart(fig_state, use_container_width=True)
-
-    # 2. Trade-in Losses by Category
     losses_by_category = tradein_losses.groupby('Product Category').size().reset_index(name='Count')
-
     if not losses_by_category.empty:
         st.subheader("Trade-in Losses by Product Category")
         fig_category = px.bar(
@@ -695,10 +576,7 @@ def process_tradein_losses(cashify_filtered, selected_year, selected_month):
             title=f"Trade-ins Lost by Product Category ({selected_month} {selected_year})"
         )
         st.plotly_chart(fig_category, use_container_width=True)
-
-    # 3. Combined view
     losses_by_state_category = tradein_losses.groupby(['Store State', 'Product Category']).size().reset_index(name='Count')
-
     if not losses_by_state_category.empty:
         st.subheader("Trade-in Losses by State and Category")
         fig_combined = px.bar(
@@ -714,62 +592,43 @@ def process_tradein_losses(cashify_filtered, selected_year, selected_month):
 
 def process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, selected_month):
     st.header("8. Device Loss to Cashify with Pricing Comparison")
-
     if selected_month == "All":
         st.warning("Please select a specific month for pricing comparison")
         return
-
     south_states = ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry']
-
-    # Standardize state names
     cashify_filtered = standardize_state_names(cashify_filtered)
     maple_filtered = standardize_state_names(maple_filtered)
-
-    # Filter for south states and current month
     cashify_prices = cashify_filtered[
         (cashify_filtered['Store State'].isin(south_states)) &
         (cashify_filtered['Month'] == selected_month) &
         (cashify_filtered['Year'] == selected_year)
     ]
-
     maple_prices = maple_filtered[
         (maple_filtered['Store State'].isin(south_states)) &
         (maple_filtered['Month'] == selected_month) &
         (maple_filtered['Year'] == selected_year)
     ]
-
     if cashify_prices.empty or maple_prices.empty:
         st.warning("Insufficient data for pricing comparison")
         return
-
-    # Enhanced product categorization
     cashify_prices['Product Category'] = cashify_prices['Product Type'].apply(categorize_product_type)
     maple_prices['Product Category'] = maple_prices['Product Type'].apply(categorize_product_type)
-
-    # Filter for valid categories
     valid_categories = ['Mobile Phone', 'Laptop', 'Tablet', 'SmartWatch (Apple)', 'SmartWatch (Android)']
     cashify_prices = cashify_prices[cashify_prices['Product Category'].isin(valid_categories)]
     maple_prices = maple_prices[maple_prices['Product Category'].isin(valid_categories)]
-
     if cashify_prices.empty or maple_prices.empty:
         st.warning("No valid product categories for pricing comparison")
         return
-
-    # Calculate average prices
     cashify_avg = cashify_prices.groupby('Product Category')['Initial Device Amount'].mean().reset_index()
     maple_avg = maple_prices.groupby('Product Category')['Maple Bid'].mean().reset_index()
-
     pricing_comparison = pd.merge(
         cashify_avg,
         maple_avg,
         on='Product Category',
         how='outer'
     ).fillna(0)
-
     pricing_comparison['Price Difference'] = pricing_comparison['Initial Device Amount'] - pricing_comparison['Maple Bid']
     pricing_comparison['Price Difference %'] = (pricing_comparison['Price Difference'] / pricing_comparison['Maple Bid']) * 100
-
-    # Format for display
     pricing_comparison = pricing_comparison.round(2)
     pricing_comparison.columns = [
         'Product Category', 
@@ -778,11 +637,8 @@ def process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, 
         'Price Difference (₹)', 
         'Price Difference (%)'
     ]
-
     st.write(f"**Pricing Comparison for {selected_month} {selected_year}**")
     st.dataframe(pricing_comparison)
-
-    # Visualization
     fig = px.bar(
         pricing_comparison.melt(id_vars=['Product Category'], 
                               value_vars=['Avg Cashify Price (₹)', 'Avg Maple Price (₹)']),
@@ -796,193 +652,46 @@ def process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, 
     )
     st.plotly_chart(fig, use_container_width=True)
 
-def base_analysis(maple_df, cashify_df, spoc_data):
+def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
     st.title("Maple vs Cashify Analytics Dashboard")
-
-    st.header("Filters")
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        years = sorted(set(maple_df['Year'].dropna()) & set(cashify_df['Year'].dropna()))
-        years = [int(year) for year in years]
-        selected_year = st.selectbox("Select Year", years if years else [2025], key="year_filter")
-
-    with col2:
-        maple_months = set(maple_df['Month'].dropna())
-        cashify_months = set(cashify_df['Month'].dropna())
-        common_months = sorted(maple_months & cashify_months)
-        selected_month = st.selectbox("Select Month", ["All"] + common_months, key="month_filter")
-
-    with col3:
-        if selected_month != "All":
-            days = []
-            if not maple_df.empty and 'Created Date' in maple_df.columns:
-                maple_days = maple_df[maple_df['Month'] == selected_month]['Created Date'].dt.day.dropna()
-                days.extend(maple_days)
-            if not cashify_df.empty and 'Order Date' in cashify_df.columns:
-                cashify_days = cashify_df[cashify_df['Month'] == selected_month]['Order Date'].dt.day.dropna()
-                days.extend(cashify_days)
-            days = sorted(set(map(int, days)))
-            selected_day = st.selectbox("Select Day", ["All"] + list(days), key="day_filter")
-        else:
-            selected_day = "All"
-
-    # Filter data
-    maple_filtered = filter_by_date(maple_df, selected_year, selected_month, selected_day)
-    cashify_filtered = filter_by_date(cashify_df, selected_year, selected_month, selected_day, is_maple=False)
-
-    if maple_filtered.empty or cashify_filtered.empty:
-        st.warning("No data available after applying filters. Please check your data or adjust the filters.")
-        return
-
-    # Apply product categorization
-    maple_filtered['Product Category'] = maple_filtered['Product Type'].apply(categorize_product_type)
-    cashify_filtered['Product Category'] = cashify_filtered['Product Type'].apply(categorize_product_type)
-
-    # Process each section
-    process_devices_lost_section(maple_filtered, cashify_filtered, spoc_data=st.session_state.spoc_data, selected_year=selected_year, selected_month=selected_month)
-    process_working_day_losses(maple_filtered, cashify_filtered, spoc_data=st.session_state.spoc_data, selected_year=selected_year, selected_month=selected_month)
-    process_tradein_losses(cashify_filtered, selected_year, selected_month)
-    process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, selected_month)
-
-def main():
-    if not st.session_state.authenticated:
-        login()
-        return
-
-    st.sidebar.write(f"Logged in as: {users[st.session_state.username]['name']}")
-    logout()
-
-    # Sidebar for reset and sample download
-    st.sidebar.header("Options")
-    if st.sidebar.button("Reset Column Mappings"):
-        st.session_state.column_mappings = {'Maple': {}, 'Cashify': {}, 'SPOC': {}}
-        st.session_state.spoc_mapping_complete = False
-        st.sidebar.success("Column mappings reset. Please reload the app to re-map columns.")
-
-    # Load data from URLs
-    with st.spinner("Loading data..."):
-        maple_df = load_excel_from_url(MAPLE_FILE_URL)
-        if maple_df is None:
-            st.error(f"Maple file failed to load from {MAPLE_FILE_URL}. Please check the URL or file access.")
-            st.stop()
-        st.session_state.maple_data = maple_df
-        st.session_state.column_mappings['Maple'] = {}
-
-        cashify_df = load_excel_from_url(CASHIFY_FILE_URL)
-        if cashify_df is None:
-            st.error(f"Cashify file failed to load from {CASHIFY_FILE_URL}. Please check the URL or file access.")
-            st.stop()
-        st.session_state.cashify_data = cashify_df
-        st.session_state.column_mappings['Cashify'] = {}
-
-        spoc_df = load_excel_from_url(SPOC_FILE_URL)
-        if spoc_df is None:
-            st.error(f"SPOC file failed to load from {SPOC_FILE_URL}. Please check the URL or file access.")
-            st.stop()
-        st.session_state.spoc_data = spoc_df
-        st.session_state.column_mappings['SPOC'] = {}
-        st.session_state.spoc_mapping_complete = False
-
-    # Validate and process data
-    with st.spinner("Processing data..."):
-        maple_df, maple_mapping = validate_and_map_columns(st.session_state.maple_data.copy(), MAPLE_REQUIRED_COLUMNS, "Maple")
-        cashify_df, cashify_mapping = validate_and_map_columns(st.session_state.cashify_data.copy(), CASHIFY_REQUIRED_COLUMNS, "Cashify")
-        spoc_df, spoc_mapping = validate_and_map_columns(st.session_state.spoc_data.copy(), SPOC_REQUIRED_COLUMNS, "SPOC")
-
-        if maple_df is None or cashify_df is None or spoc_df is None:
-            st.error("Please complete column mappings for all datasets. Ensure SPOC 'Store Name' and 'Spoc Name' are mapped to valid columns.")
-            st.stop()
-
-        if 'Store Name' not in spoc_df.columns or 'Spoc Name' not in spoc_df.columns:
-            st.error("SPOC mapping incomplete: Store Name or Spoc Name not found after mapping. Please map these columns.")
-            st.stop()
-        st.session_state.spoc_mapping_complete = True
-
-        # Standardize data
-        maple_df = standardize_month(maple_df)
-        cashify_df = standardize_month(cashify_df)
-
-        maple_df = standardize_names(maple_df, product_col='Old Product Name')
-        cashify_df = standardize_names(cashify_df, product_col='Old Device Name')
-        spoc_df = standardize_names(spoc_df)
-
-        maple_df = map_store_names_and_states(maple_df, spoc_df, is_maple=True)
-        cashify_df = map_store_names_and_states(cashify_df, spoc_df, is_maple=False)
-
-        maple_df['Created Date'] = pd.to_datetime(maple_df['Created Date'], errors='coerce')
-        cashify_df['Order Date'] = pd.to_datetime(cashify_df['Order Date'], errors='coerce')
-
-        # Generate SPOC IDs
-        if 'Spoc Name' in maple_df.columns and 'Store Name' in maple_df.columns and 'Store State' in maple_df.columns:
-            maple_df['SPOC_ID'] = maple_df.apply(
-                lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
-                if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
-                axis=1
-            )
-        if 'Spoc Name' in cashify_df.columns and 'Store Name' in cashify_df.columns and 'Store State' in cashify_df.columns:
-            cashify_df['SPOC_ID'] = cashify_df.apply(
-                lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
-                if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
-                axis=1
-            )
-        if 'Spoc Name' in spoc_df.columns and 'Store Name' in spoc_df.columns and 'Store State' in spoc_df.columns:
-            spoc_df['SPOC_ID'] = spoc_df.apply(
-                lambda x: generate_spoc_id(x['Spoc Name'], x['Store Name'], x['Store State']) 
-                if pd.notna(x['Spoc Name']) and pd.notna(x['Store Name']) and pd.notna(x['Store State']) else 'Unknown', 
-                axis=1
-            )
-
-    # Navigation
-    page = st.sidebar.radio("Select Page", ["Base Analysis", "Advanced Analytics"])
-
-    if page == "Base Analysis":
-        base_analysis(maple_df, cashify_df, spoc_df)
-    elif page == "Advanced Analytics":
-        advanced_analytics(maple_df, cashify_df, spoc_df)
-
-def base_analysis(maple_df, cashify_df, spoc_df):
-    st.title("Maple vs Cashify Analytics Dashboard")
-
-    # Add current date pointer at the top
     current_date = date.today().strftime("%B %d, %Y")
-    st.markdown(f"**Current Date:** {current_date}")  # This will display the current date prominently
-
+    st.markdown(f"**Current Date:** {current_date}")
     st.header("Filters")
     col1, col2, col3 = st.columns(3)
-
     with col1:
         years = sorted(set(maple_df['Year'].dropna()) & set(cashify_df['Year'].dropna()))
         years = [int(year) for year in years]
         selected_year = st.selectbox("Select Year", years if years else [2025], key="year_filter")
-
     with col2:
         maple_months = set(maple_df['Month'].dropna())
         cashify_months = set(cashify_df['Month'].dropna())
         common_months = sorted(maple_months & cashify_months)
         selected_month = st.selectbox("Select Month", ["All"] + common_months, key="month_filter")
-
     with col3:
         if selected_month != "All":
             days = []
+            # 🔹 Ensure datetime conversion before using .dt
             if not maple_df.empty and 'Created Date' in maple_df.columns:
+                import pandas as pd
+                maple_df['Created Date'] = pd.to_datetime(maple_df['Created Date'], errors='coerce')
                 maple_days = maple_df[maple_df['Month'] == selected_month]['Created Date'].dt.day.dropna()
                 days.extend(maple_days)
+
             if not cashify_df.empty and 'Order Date' in cashify_df.columns:
+                cashify_df['Order Date'] = pd.to_datetime(cashify_df['Order Date'], errors='coerce')
                 cashify_days = cashify_df[cashify_df['Month'] == selected_month]['Order Date'].dt.day.dropna()
                 days.extend(cashify_days)
+
             days = sorted(set(map(int, days)))
             selected_day = st.selectbox("Select Day", ["All"] + list(days), key="day_filter")
         else:
             selected_day = "All"
 
-    # Dynamically determine target column based on selected month
     target_column = f"{selected_month} Target" if selected_month != "All" else "May Target"
     if selected_month != "All" and target_column not in spoc_df.columns:
         st.error(f"Target column '{target_column}' not found in SPOC data. Please ensure the SPOC Master Data Sheet includes this column.")
         st.stop()
 
-    # Define spoc_weekoffs
     if 'Spoc Name' in spoc_df.columns and 'Weekoff Day' in spoc_df.columns and selected_month != "All":
         spoc_weekoffs = {row['Spoc Name']: get_weekoffs(selected_year, selected_month, row['Weekoff Day']) for _, row in spoc_df.iterrows()}
     else:
@@ -991,52 +700,33 @@ def base_analysis(maple_df, cashify_df, spoc_df):
 
     maple_filtered = filter_by_date(maple_df, selected_year, selected_month, selected_day)
     cashify_filtered = filter_by_date(cashify_df, selected_year, selected_month, selected_day, is_maple=False)
-
     if maple_filtered.empty or cashify_filtered.empty:
         st.warning("No data available after applying filters. Please check your data or adjust the filters.")
         st.stop()
 
-    # Apply product category standardization
     maple_filtered['Product Category'] = maple_filtered['Product Type'].apply(categorize_product_type)
     cashify_filtered['Product Category'] = cashify_filtered['Product Type'].apply(categorize_product_type)
 
     # 1. Average Devices Acquired
     st.header("1. Average Devices Acquired")
     col1, col2 = st.columns(2)
-
     with col1:
         st.subheader("Maple")
-
-        # ✅ Clean Zone column once
         if not maple_filtered.empty:
             maple_filtered['Zone_clean'] = (
                 maple_filtered['Zone']
-                .astype(str)       # Ensure string
-                .str.strip()       # Remove leading/trailing spaces
-                .str.lower()       # Lowercase
+                .astype(str)
+                .str.strip()
+                .str.lower()
             )
-
-            # Map variations to standard labels
             zone_map = {
-                'South': 'South',
-                'south': 'South',
-                'south zone': 'South',
-                'south region': 'South',
-                'West': 'West',
-                'west': 'West',
-                'west zone': 'West',
-                'west region': 'West'
+                'South': 'South', 'south': 'South', 'south zone': 'South', 'south region': 'South',
+                'West': 'West', 'west': 'West', 'west zone': 'West', 'west region': 'West'
             }
             maple_filtered['Zone_clean'] = maple_filtered['Zone_clean'].map(zone_map)
-
-        # 🔍 Debug: see what unique values remain (optional)
-        # st.write("Unique Zones after cleaning:", maple_filtered['Zone_clean'].unique())
         else:
             maple_filtered['Zone_clean'] = None
-        # Calculate daily average
         maple_daily = maple_filtered.groupby(maple_filtered['Created Date'].dt.date).size().mean() if not maple_filtered.empty else 0
-
-        # Calculate weekly average - improved version
         if not maple_filtered.empty:
             start_date = maple_filtered['Created Date'].min()
             end_date = maple_filtered['Created Date'].max()
@@ -1044,25 +734,17 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             maple_weekly = len(maple_filtered) / weeks_in_period
         else:
             maple_weekly = 0
-
         maple_monthly = len(maple_filtered) if selected_month != "All" else 0
-
-        # Zone calculations
         maple_south = maple_filtered[maple_filtered['Zone'].str.strip().str.title() == 'South']
         maple_west = maple_filtered[maple_filtered['Zone'].str.strip().str.title() == 'West']
-
         st.write(f"Daily Avg: {maple_daily:.2f}")
         st.write(f"Weekly Avg: {maple_weekly:.2f}")
         st.write(f"Monthly Total: {maple_monthly}")
         st.write(f"South Zone Total: {len(maple_south)}")
         st.write(f"West Zone Total: {len(maple_west)}")
-
     with col2:
         st.subheader("Cashify")
-        # Calculate daily average
         cashify_daily = cashify_filtered.groupby(cashify_filtered['Order Date'].dt.date).size().mean() if not cashify_filtered.empty else 0
-
-        # Calculate weekly average - same improved method as Maple
         if not cashify_filtered.empty:
             start_date = cashify_filtered['Order Date'].min()
             end_date = cashify_filtered['Order Date'].max()
@@ -1070,21 +752,16 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             cashify_weekly = len(cashify_filtered) / weeks_in_period
         else:
             cashify_weekly = 0
-
-        # Monthly total
         cashify_monthly = len(cashify_filtered) if selected_month != "All" else 0
-
-        # Cashify is only in South zone - simplified approach
-        cashify_south = cashify_filtered  # All Cashify data is South zone
-        cashify_west = pd.DataFrame()  # Empty DataFrame for West zone
-
+        cashify_south = cashify_filtered
+        cashify_west = pd.DataFrame()
         st.write(f"Daily Avg: {cashify_daily:.2f}")
         st.write(f"Weekly Avg: {cashify_weekly:.2f}")
         st.write(f"Monthly Total: {cashify_monthly}")
         st.write(f"South Zone Total: {len(cashify_south)}")
         st.write(f"West Zone Total: {len(cashify_west)}")
 
-    # Weekly Market Share Overview
+    # 1.1 Weekly Market Share Overview
     st.header("1.1 Weekly Market Share Overview")
     if selected_month != "All" and 'Zone' in maple_filtered.columns and 'Store State' in maple_filtered.columns:
         weeks = get_weeks_in_month(selected_year, selected_month)
@@ -1093,30 +770,28 @@ def base_analysis(maple_df, cashify_df, spoc_df):
         for state in south_states:
             for week_name, start_date, end_date in weeks:
                 maple_week = maple_filtered[
-                (maple_filtered['Store State'] == state) &
-                (maple_filtered['Created Date'].dt.date >= start_date) &
-                (maple_filtered['Created Date'].dt.date <= end_date)
+                    (maple_filtered['Store State'] == state) &
+                    (maple_filtered['Created Date'].dt.date >= start_date) &
+                    (maple_filtered['Created Date'].dt.date <= end_date)
                 ]
                 cashify_week = cashify_filtered[
-                (cashify_filtered['Store State'] == state) &
-                (cashify_filtered['Order Date'].dt.date >= start_date) &
-                (cashify_filtered['Order Date'].dt.date <= end_date)
+                    (cashify_filtered['Store State'] == state) &
+                    (cashify_filtered['Order Date'].dt.date >= start_date) &
+                    (cashify_filtered['Order Date'].dt.date <= end_date)
                 ]
                 maple_count = len(maple_week)
                 total_count = maple_count + len(cashify_week)
                 ms = calculate_market_share(maple_count, total_count)
                 weekly_ms_data.append({
-                'Store State': state,
-                'Week': week_name,
-                'Market Share (%)': round(ms, 2)
+                    'Store State': state,
+                    'Week': week_name,
+                    'Market Share (%)': round(ms, 2)
                 })
-
         weekly_ms_df = pd.DataFrame(weekly_ms_data)
         if not weekly_ms_df.empty:
             weekly_ms_pivot = weekly_ms_df.pivot(index='Store State', columns='Week', values='Market Share (%)').fillna(0)
             st.write("**Weekly Market Share by State:**")
             st.dataframe(weekly_ms_pivot)
-
             st.download_button(
                 label="Download Weekly Market Share as Excel",
                 data=create_excel_buffer(weekly_ms_pivot.reset_index(), 'Weekly Market Share'),
@@ -1137,18 +812,17 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             monthly_ms_data = []
             for month, year in last_n_months:
                 maple_ms = maple_df[
-                (maple_df['Zone'] == 'South') &
-                (maple_df['Store State'].isin(south_states)) &
-                (maple_df['Month'] == month) &
-                (maple_df['Year'] == year)
+                    (maple_df['Zone'] == 'South') &
+                    (maple_df['Store State'].isin(south_states)) &
+                    (maple_df['Month'] == month) &
+                    (maple_df['Year'] == year)
                 ].groupby(['Store State']).size().reset_index(name='Maple Count')
                 cashify_ms = cashify_df[
-                (cashify_df['Zone'] == 'South') &
-                (cashify_df['Store State'].isin(south_states)) &
-                (cashify_df['Month'] == month) &
-                (cashify_df['Year'] == year)
+                    (cashify_df['Zone'] == 'South') &
+                    (cashify_df['Store State'].isin(south_states)) &
+                    (cashify_df['Month'] == month) &
+                    (cashify_df['Year'] == year)
                 ].groupby(['Store State']).size().reset_index(name='Cashify Count')
-
                 monthly_ms = pd.merge(
                     maple_ms,
                     cashify_ms,
@@ -1161,13 +835,10 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                 ).round(2)
                 monthly_ms['Month'] = month
                 monthly_ms_data.append(monthly_ms[['Store State', 'Month', 'Market Share (%)']])
-
             monthly_ms_df = pd.concat(monthly_ms_data, ignore_index=True)
             monthly_ms_pivot = monthly_ms_df.pivot(index='Store State', columns='Month', values='Market Share (%)').fillna(0)
-
             st.write("**Monthly Market Share by State:**")
             st.dataframe(monthly_ms_pivot)
-
             fig_ms = px.bar(
                 monthly_ms_df,
                 x='Store State',
@@ -1185,28 +856,24 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                 margin=dict(t=150)
             )
             st.plotly_chart(fig_ms, use_container_width=True)
-
             st.download_button(
-            label="Download Monthly Market Share as Excel",
-            data=create_excel_buffer(monthly_ms_pivot.reset_index(), 'Monthly Market Share'),
-            file_name="monthly_market_share.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                label="Download Monthly Market Share as Excel",
+                data=create_excel_buffer(monthly_ms_pivot.reset_index(), 'Monthly Market Share'),
+                file_name="monthly_market_share.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
             st.warning("Please select a specific month to view current and last 3 months' market share.")
     else:
         st.warning("Required columns (Zone, Store State, Month) missing for monthly market share analysis.")
 
-    # 2.1 Device Acquisition Analysis by SPOC in South and West Zones
+    # 2.1 Device Acquisition Analysis by SPOC
     st.header("2.1 Device Acquisition Analysis by SPOC in South and West Zones (First and Second Half of Month)")
 
-    # Define zones and state mappings
     zone_state_map = {
-    "South": ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry'],
-    "West": ['Maharashtra']
+        "South": ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry'],
+        "West": ['Maharashtra']
     }
-
-    # Flatten all states and map state to zone
     all_states = [state for states in zone_state_map.values() for state in states]
     state_to_zone = {state: zone for zone, states in zone_state_map.items() for state in states}
 
@@ -1216,16 +883,14 @@ def base_analysis(maple_df, cashify_df, spoc_df):
     excel_data = []
 
     if 'Zone' in maple_filtered.columns and 'Store State' in maple_filtered.columns:
-        # Ensure Created Date is in datetime format
         maple_filtered['Created Date'] = pd.to_datetime(maple_filtered['Created Date'], errors='coerce')
-
-        # Filter only South and West zones
         all_zone_states = set(all_states)
+
         filtered_data = maple_filtered[
-        (maple_filtered['Store State'].isin(all_zone_states)) &
-        (maple_filtered['Month'] == selected_month) &
-        (maple_filtered['Year'] == selected_year)
-        ]   
+            (maple_filtered['Store State'].isin(all_zone_states)) &
+            (maple_filtered['Month'] == selected_month) &
+            (maple_filtered['Year'] == selected_year)
+        ]
 
         if not filtered_data.empty:
             for zone, states in zone_state_map.items():
@@ -1235,37 +900,38 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                     if state_data.empty:
                         continue
 
-                    # Split month into two parts: 1st-15th and 16th-end
                     first_half = state_data[state_data['Created Date'].dt.day <= 15]
                     second_half = state_data[state_data['Created Date'].dt.day > 15]
 
                     for period, data in [('1st-15th', first_half), ('16th-End', second_half)]:
-                       for store in zone_stores:
+                        for store in zone_stores:
                             store_data = data[data['Store Name'] == store]
-                            if not store_data.empty:
-                                store_spocs = store_data['Spoc Name'].unique() if 'Spoc Name' in store_data.columns else ["No Spoc"]
-                                store_state = store_data['Store State'].iloc[0] if 'Store State' in store_data.columns else "Unknown"
-                                for spoc in store_spocs:
-                                    device_count = len(store_data[store_data['Spoc Name'] == spoc]) if spoc != "No Spoc" else len(store_data)
-                                    if device_count > 0:
-                                        device_data.append({
-                                        'Zone': zone,
-                                        'Store State': store_state,
-                                        'Store Name': store,
-                                        'Spoc Name': spoc,
-                                        'Period': f"{selected_month} {period}",
-                                        'Device Count': device_count
-                                        })
-                                        excel_data.append({
-                                        'Zone': zone,
-                                        'State Name': store_state,
-                                        'Store Name': store,
-                                        'SPOC Name': spoc,
-                                        f"First Half ({selected_month})": device_count if period == '1st-15th' else 0,
-                                        f"Second Half ({selected_month})": device_count if period == '16th-End' else 0
-                                        })
+                            if store_data.empty:
+                                continue
 
-    # Visualization (state-specific) and download (all states)
+                            store_spocs = store_data['Spoc Name'].unique() if 'Spoc Name' in store_data.columns else ["No Spoc"]
+                            store_state = store_data['Store State'].iloc[0] if 'Store State' in store_data.columns else "Unknown"
+
+                            for spoc in store_spocs:
+                                device_count = len(store_data[store_data['Spoc Name'] == spoc]) if spoc != "No Spoc" else len(store_data)
+                                if device_count > 0:
+                                    device_data.append({
+                                    'Zone': zone,
+                                    'Store State': store_state,
+                                    'Store Name': store,
+                                    'Spoc Name': spoc,
+                                    'Period': f"{selected_month} {period}",
+                                    'Device Count': device_count
+                                    })
+                                    excel_data.append({
+                                    'Zone': zone,
+                                    'State Name': store_state,
+                                    'Store Name': store,
+                                    'SPOC Name': spoc,
+                                    f"First Half ({selected_month})": device_count if period == '1st-15th' else 0,
+                                    f"Second Half ({selected_month})": device_count if period == '16th-End' else 0
+                                    })
+
     if device_data:
         selected_zone = state_to_zone[state_dropdown]
         chart_df = pd.DataFrame([d for d in device_data if d['Store State'] == state_dropdown])
@@ -1273,43 +939,41 @@ def base_analysis(maple_df, cashify_df, spoc_df):
         if not chart_df.empty:
             chart_df['Store_SPOC'] = chart_df['Store Name'] + ' (' + chart_df['Spoc Name'] + ')'
             fig_device_count = px.bar(
-            chart_df,
-            x='Store_SPOC',
-            y='Device Count',
-            color='Period',
-            text='Device Count',
-            title=f"Device Acquisition in {state_dropdown} by Store and SPOC (First vs Second Half of {selected_month})",
-            height=600,
-            barmode='group'
+                chart_df,
+                x='Store_SPOC',
+                y='Device Count',
+                color='Period',
+                text='Device Count',
+                title=f"Device Acquisition in {state_dropdown} by Store and SPOC (First vs Second Half of {selected_month})",
+                height=600,
+                barmode='group'
             )
             fig_device_count.update_traces(texttemplate='%{text}', textposition='auto')
-            fig_device_count.update_layout(
-                showlegend=True,
-                xaxis_title="Store Name (SPOC)",
-            xaxis_tickangle=45
-            )
+            fig_device_count.update_layout(showlegend=True, xaxis_title="Store Name (SPOC)", xaxis_tickangle=45)
             st.plotly_chart(fig_device_count, use_container_width=True)
 
             state_total = chart_df['Device Count'].sum()
             st.write(f"**Total Devices Acquired in {state_dropdown} for {selected_month}:** {state_total}")
 
-        # Prepare and provide full Excel download
+        # Excel download (robust: no BytesIO shadowing)
         excel_df = pd.DataFrame(excel_data)
-        excel_summary = excel_df.groupby(['Zone', 'State Name', 'Store Name', 'SPOC Name']).sum().reset_index()
+        excel_summary = excel_df.groupby(['Zone', 'State Name', 'Store Name', 'SPOC Name'], as_index=False).sum(numeric_only=True)
 
-        excel_buffer = BytesIO()
-        excel_summary.to_excel(excel_buffer, index=False, engine='openpyxl')
+        import io  # ensure we use the module namespace
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            excel_summary.to_excel(writer, index=False, sheet_name='Device Acquisition')
         excel_buffer.seek(0)
 
         st.download_button(
             label="Download Full Device Acquisition Data (All States)",
-            data=excel_buffer,
+            data=excel_buffer.getvalue(),
             file_name=f"Full_Device_Acquisition_{selected_month}_{selected_year}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
         st.write(f"No device acquisition data available for {state_dropdown} in {selected_month}.")
-
+    
     # 2.2 Zone-wise Market Share
     st.header("2.2 Zone-wise Market Share")
     if selected_month != "All":
@@ -1323,25 +987,23 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                     zone_total = zone_maple + len(cashify_df[(cashify_df['Zone'] == zn) & (cashify_df['Month'] == month) & (cashify_df['Year'] == year)]) if 'Zone' in cashify_df.columns else 0
                     zone_ms = calculate_market_share(zone_maple, zone_total)
                     zone_market_data.append({
-                    'Zone': zn,
-                    'Month': month,
-                    'Market Share (%)': round(zone_ms, 2)
+                        'Zone': zn,
+                        'Month': month,
+                        'Market Share (%)': round(zone_ms, 2)
                     })
-
         if zone_market_data:
             zone_ms_df = pd.DataFrame(zone_market_data)
             zone_ms_pivot = zone_ms_df.pivot(index='Zone', columns='Month', values='Market Share (%)').fillna(0)
             st.write("**Market Share by Zone (South and West):**")
             st.dataframe(zone_ms_df)
-
             fig_zone_ms = px.bar(
                 zone_ms_df,
-            x='Zone',
-            y='Market Share (%)',
-            color='Month',
-            text='Market Share (%)',
-            title=f"Zone-wise Market Share (Current and Last 3 Month)",
-            barmode='group'
+                x='Zone',
+                y='Market Share (%)',
+                color='Month',
+                text='Market Share (%)',
+                title=f"Zone-wise Market Share (Current and Last 3 Month)",
+                barmode='group'
             )
             fig_zone_ms.update_traces(texttemplate='%{text:.1f}', textposition='auto')
             fig_zone_ms.update_layout(showlegend=True)
@@ -1357,7 +1019,6 @@ def base_analysis(maple_df, cashify_df, spoc_df):
     zone = st.selectbox("Select Zone", zones, key="zone_select_2_3")
     stores_in_zone = maple_filtered[maple_filtered['Zone'] == zone]['Store Name'].unique() if 'Zone' in maple_filtered.columns else []
     low_market_data = []
-
     for store in stores_in_zone:
         store_spocs = maple_filtered[maple_filtered['Store Name'] == store]['Spoc Name'].unique() if 'Spoc Name' in maple_filtered.columns else ["No Spoc"]
         for store_spoc in store_spocs:
@@ -1366,17 +1027,15 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             ms = calculate_market_share(maple_count, total_count)
             if ms < 50:
                 low_market_data.append({
-                'Store Name': store,
-                'Spoc Name': store_spoc,
-                'Maple Devices': maple_count,
-                'Market Share (%)': ms
+                    'Store Name': store,
+                    'Spoc Name': store_spoc,
+                    'Maple Devices': maple_count,
+                    'Market Share (%)': ms
                 })
-
     if low_market_data:
         low_ms_df = pd.DataFrame(low_market_data)
         st.write("**Stores with Market Share Below 50%**")
         st.dataframe(low_ms_df)
-
         fig = px.bar(
             low_ms_df,
             x='Market Share (%)',
@@ -1385,10 +1044,9 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             text='Maple Devices',
             title=f"Stores in {zone} with Market Share Below 50%",
             orientation='h'
-        )   
+        )
         fig.update_traces(textposition='inside')
         st.plotly_chart(fig)
-
         st.download_button(
             label="Download Low Market Share Stores as Excel",
             data=create_excel_buffer(low_ms_df, 'Low Market Share Stores'),
@@ -1407,34 +1065,28 @@ def base_analysis(maple_df, cashify_df, spoc_df):
         cashify_state_counts = cashify_filtered[cashify_filtered['Store State'].isin(south_states)].groupby('Store State').size().reset_index(name='Cashify Device Count')
         state_counts = pd.merge(maple_state_counts, cashify_state_counts, on='Store State', how='outer').fillna(0)
         state_counts_melted = pd.melt(
-        state_counts,
-        id_vars=['Store State'],
-        value_vars=['Maple Device Count', 'Cashify Device Count'],
-        var_name='Source',
-        value_name='Device Count'
-        )   
-
-        logging.info(f"State-wise Device Counts: {state_counts[['Store State', 'Maple Device Count', 'Cashify Device Count']].to_dict('records')}")
-
+            state_counts,
+            id_vars=['Store State'],
+            value_vars=['Maple Device Count', 'Cashify Device Count'],
+            var_name='Source',
+            value_name='Device Count'
+        )
         if not state_counts_melted.empty:
             fig_state = px.bar(
-            state_counts_melted,
-            x='Store State',
-            y='Device Count',
-            color='Source',
-            text='Device Count',
-            title=f"Device Counts per State (South Zone, Year: {selected_year}, Month: {selected_month})",
-            barmode='group',
-            color_discrete_map={'Maple Device Count': '#636EFA', 'Cashify Device Count': '#EF553B'}
+                state_counts_melted,
+                x='Store State',
+                y='Device Count',
+                color='Source',
+                text='Device Count',
+                title=f"Device Counts per State (South Zone, Year: {selected_year}, Month: {selected_month})",
+                barmode='group',
+                color_discrete_map={'Maple Device Count': '#636EFA', 'Cashify Device Count': '#EF553B'}
             )
             fig_state.update_traces(texttemplate='%{text:.0f}', textposition='auto')
             fig_state.update_layout(showlegend=True)
             st.plotly_chart(fig_state, use_container_width=True)
-        else:
-            st.write("No device data available for state-wise analysis in South Zone.")
 
-    # Top Performer SPOCs
-    st.write("**Top Performing SPOCs (Target Achievement >50%)**")
+    st.write("**Top Performing SPOCs (Target Achievement Categories)**")
     if 'Spoc Name' in maple_filtered.columns and all(col in spoc_df.columns for col in ['Spoc Name', 'Store State', 'Store Name']):
         last_n_months = get_last_n_months(selected_month, selected_year, 2) if selected_month != "All" else [(selected_month, selected_year)]
         spoc_achievements = []
@@ -1444,21 +1096,21 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             temp_ach['Year'] = year
             spoc_achievements.append(temp_ach)
         spoc_achievements = pd.concat(spoc_achievements, ignore_index=True)
-
         target_columns = [col for col in spoc_df.columns if col.endswith('Target')]
         spoc_targets = spoc_df[['Spoc Name', 'Store Name', 'Store State'] + target_columns]
         top_spoc_df = pd.merge(
-        spoc_achievements,
-        spoc_targets,
-        on=['Spoc Name', 'Store Name'],
-        how='inner'
+            spoc_achievements,
+            spoc_targets,
+            on=['Spoc Name', 'Store Name'],
+            how='inner'
         )
         top_spoc_df = top_spoc_df[top_spoc_df['Store State'].isin(south_states)]
-
         for month in ['January', 'February', 'March', 'April', 'May', 'June',
-                  'July', 'August', 'September', 'October', 'November', 'December']:
+                      'July', 'August', 'September', 'October', 'November', 'December']:
             target_col = f"{month} Target"
             if target_col in top_spoc_df.columns:
+                import pandas as pd
+                import numpy as np
                 top_spoc_df[f'% {month} Target Achieved'] = pd.to_numeric(
                     top_spoc_df.apply(
                         lambda x: calculate_target_achievement(x['Achievement'], x[target_col])
@@ -1467,70 +1119,493 @@ def base_analysis(maple_df, cashify_df, spoc_df):
                         axis=1
                     ), errors='coerce'
                 ).round(2)
-
         top_spoc_df = top_spoc_df[top_spoc_df['Month'].isin([
             'January', 'February', 'March', 'April', 'May', 'June',
             'July', 'August', 'September', 'October', 'November', 'December'
         ])]
-        top_spoc_df = top_spoc_df[top_spoc_df[f'% {selected_month} Target Achieved'] > 50] if selected_month != "All" else top_spoc_df[top_spoc_df[f'% May Target Achieved'] > 50]
-
-        # Split into two groups: 50-75% and >75%
-        spoc_50_75 = top_spoc_df[top_spoc_df[f'% {selected_month} Target Achieved'].between(50, 75)]
-        spoc_above_75 = top_spoc_df[top_spoc_df[f'% {selected_month} Target Achieved'] > 75]
-
-        display_cols = ['Spoc Name', 'Store State', 'Store Name', 'Month', 'Achievement'] + [col for col in top_spoc_df.columns if col.endswith('Target') or col.startswith('%')]
-
-        # Display 50-75%
-        if not spoc_50_75.empty:
-            st.subheader("SPOCs with Target Achievement 50-75%")
-            st.dataframe(spoc_50_75[display_cols])
-
-            spoc_50_75['Spoc_Display'] = spoc_50_75['Spoc Name'] + ' (' + spoc_50_75['Store State'] + ')'
-            fig_spoc_50_75 = px.bar(
-            spoc_50_75,
-            x='Spoc_Display',
-            y=f'% {selected_month} Target Achieved',
-            color='Month',
-            text=f'% {selected_month} Target Achieved',
-            title=f"SPOCs with 50-75% Target Achievement (South Zone)",
-            height=600
-            )
-            fig_spoc_50_75.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
-            fig_spoc_50_75.update_layout(xaxis_title="SPOC Name (State)", xaxis_tickangle=45, showlegend=True)
-            st.plotly_chart(fig_spoc_50_75, use_container_width=True)
-
-        # Display >75%
-        if not spoc_above_75.empty:
-            st.subheader("SPOCs with Target Achievement >75%")
-            st.dataframe(spoc_above_75[display_cols])
-
-            spoc_above_75['Spoc_Display'] = spoc_above_75['Spoc Name'] + ' (' + spoc_above_75['Store State'] + ')'
-            fig_spoc_above_75 = px.bar(
-            spoc_above_75,
-            x='Spoc_Display',
-            y=f'% {selected_month} Target Achieved',
-            color='Month',
-            text=f'% {selected_month} Target Achieved',
-            title=f"SPOCs with >75% Target Achievement (South Zone)",
-            height=600
-            )
-            fig_spoc_above_75.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
-            fig_spoc_above_75.update_layout(xaxis_title="SPOC Name (State)", xaxis_tickangle=45, showlegend=True)
-            st.plotly_chart(fig_spoc_above_75, use_container_width=True)
-
-            st.download_button(
-                label="Download Top Performing SPOCs as Excel",
-            data=create_excel_buffer(spoc_above_75[display_cols], 'Top SPOCs'),
-            file_name="top_spocs.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        target_col = f'% {selected_month} Target Achieved'
+        if selected_month != "All" and target_col in top_spoc_df.columns:
+            spoc_below_20 = top_spoc_df[top_spoc_df[target_col] < 20]
+            spoc_20_90 = top_spoc_df[top_spoc_df[target_col].between(20, 90)]
+            spoc_above_90 = top_spoc_df[top_spoc_df[target_col] > 90]
+            display_cols = ['Spoc Name', 'Store State', 'Store Name', 'Month', 'Achievement'] + [col for col in top_spoc_df.columns if col.endswith('Target') or col.startswith('%')]
+            if not spoc_below_20.empty:
+                st.subheader("SPOCs with Target Achievement Below 20%")
+                st.dataframe(spoc_below_20[display_cols])
+                spoc_below_20['Spoc_Display'] = spoc_below_20['Spoc Name'] + ' (' + spoc_below_20['Store State'] + ')'
+                fig_spoc_below_20 = px.bar(
+                    spoc_below_20,
+                    x='Spoc_Display',
+                    y=target_col,
+                    color='Month',
+                    text=target_col,
+                    title="SPOCs with Below 20% Target Achievement (South Zone)",
+                    height=600
+                )
+                fig_spoc_below_20.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
+                fig_spoc_below_20.update_layout(xaxis_title="SPOC Name (State)", xaxis_tickangle=45, showlegend=True)
+                st.plotly_chart(fig_spoc_below_20, use_container_width=True)
+            if not spoc_20_90.empty:
+                st.subheader("SPOCs with Target Achievement 20-90%")
+                st.dataframe(spoc_20_90[display_cols])
+                spoc_20_90['Spoc_Display'] = spoc_20_90['Spoc Name'] + ' (' + spoc_20_90['Store State'] + ')'
+                fig_spoc_20_90 = px.bar(
+                    spoc_20_90,
+                    x='Spoc_Display',
+                    y=target_col,
+                    color='Month',
+                    text=target_col,
+                    title="SPOCs with 20-90% Target Achievement (South Zone)",
+                    height=600
+                )
+                fig_spoc_20_90.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
+                fig_spoc_20_90.update_layout(xaxis_title="SPOC Name (State)", xaxis_tickangle=45, showlegend=True)
+                st.plotly_chart(fig_spoc_20_90, use_container_width=True)
+            if not spoc_above_90.empty:
+                st.subheader("SPOCs with Target Achievement Above 90%")
+                st.dataframe(spoc_above_90[display_cols])
+                spoc_above_90['Spoc_Display'] = spoc_above_90['Spoc Name'] + ' (' + spoc_above_90['Store State'] + ')'
+                fig_spoc_above_90 = px.bar(
+                    spoc_above_90,
+                    x='Spoc_Display',
+                    y=target_col,
+                    color='Month',
+                    text=target_col,
+                    title="SPOCs with Above 90% Target Achievement (South Zone)",
+                    height=600
+                )
+                fig_spoc_above_90.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
+                fig_spoc_above_90.update_layout(xaxis_title="SPOC Name (State)", xaxis_tickangle=45, showlegend=True)
+                st.plotly_chart(fig_spoc_above_90, use_container_width=True)
+                st.download_button(
+                    label="Download Top Performing SPOCs as Excel",
+                    data=create_excel_buffer(spoc_above_90[display_cols], 'Top SPOCs'),
+                    file_name="top_spocs.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.write("No SPOCs have target achievement in the specified categories for the selected period.")
         else:
-            st.write("No SPOCs have target achievement above 50% for the selected period.")
+            st.warning("Please select a specific month for SPOC performance analysis.")
     else:
         st.warning("Required columns missing for SPOC performance analysis (Spoc Name, Store State, or Target columns).")
 
-    # 2.5 Market Share Analysis
-    st.header("2.5 Market Share Analysis")
+    # 2.5 Attach% Analysis
+    st.header("2.5 Attach% Analysis by State, Store, and Performers")
+
+    if selected_month == "All":
+        st.warning("Please select a specific month for Attach% analysis")   
+    else:
+        import numpy as np
+        import pandas as pd
+        import re
+        import calendar
+        from calendar import month_name as _month_name
+        from io import BytesIO
+
+        # ---------- helpers ----------
+        def normalize_store_keys(df: pd.DataFrame) -> pd.DataFrame:
+            """Rename common variants and ensure key columns exist + trimmed."""
+            df = df.copy()
+            ren = {}
+            if "State" in df.columns and "Store State" not in df.columns:
+                ren["State"] = "Store State"
+            if "Store" in df.columns and "Store Name" not in df.columns:
+                ren["Store"] = "Store Name"
+            if "Code" in df.columns and "Store Code" not in df.columns:
+                ren["Code"] = "Store Code"
+            if ren:
+                df = df.rename(columns=ren)
+
+            for c in ["Store Name", "Store Code", "Store State", "Spoc Name"]:
+                if c not in df.columns:
+                    df[c] = ""
+
+            for c in ["Store Name", "Store Code", "Store State", "Spoc Name"]:
+                df[c] = df[c].astype(str).str.strip().str.title()
+
+            return df
+
+        def to_num(df: pd.DataFrame, cols) -> pd.DataFrame:
+            df = df.copy()
+            for c in cols:
+                if c in df.columns:
+                    df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+            return df
+
+        def month_to_num(m):
+            m = str(m).strip()
+            if not m:
+                return None
+            try:
+                n = int(m)
+                if 1 <= n <= 12:
+                    return n
+            except Exception:
+                pass
+            m_norm = m.title()
+            for i in range(1, 13):
+                if _month_name[i] == m_norm or _month_name[i][:3] == m_norm[:3]:
+                    return i
+            return None
+
+        def _abbr(m): 
+            return str(m).strip().title()[:3]
+
+        # --- Google Sheets helpers: turn a view/share URL into an export .xlsx and open workbook ---
+        def _gsheets_export_xlsx(url: str) -> str:
+            """
+            Convert a Google Sheets 'view/edit' link into an export XLSX link.
+            Works for .../edit?... or .../view?... style URLs.
+            """
+            if "/export" in url:
+                return url  # already export
+            # extract the file id between /d/ and the next slash
+            m = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
+            if not m:
+                return url
+            file_id = m.group(1)
+            return f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+
+        def _fetch_excel_bytes(url: str, retries: int = 3, timeout: int = 30) -> BytesIO:
+            exp = _gsheets_export_xlsx(url)
+            for attempt in range(retries):
+                try:
+                    r = requests.get(exp, stream=True, timeout=timeout)
+                    r.raise_for_status()
+                    bio = BytesIO()
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            bio.write(chunk)
+                    bio.seek(0)
+                    return bio
+                except Exception:
+                    if attempt == retries - 1:
+                        raise
+            # fallback
+            return BytesIO()
+
+        def load_lob_sales_from_url_for_selected_month(selected_month, selected_year, url):
+            """
+            Open the LOB workbook from the provided Google Sheets URL and return the
+            sheet that matches the selected month/year (robust matching).
+            """
+            mname = str(selected_month).strip().title()
+            ab = _abbr(mname)
+            mnum = month_to_num(mname)
+            ystr = str(selected_year).strip()
+
+            # get workbook as bytes
+            wb_bytes = _fetch_excel_bytes(url)
+            xls = pd.ExcelFile(wb_bytes)
+            names = {name.lower(): name for name in xls.sheet_names}
+
+            # exact month first
+            if mname.lower() in names:
+                return normalize_store_keys(xls.parse(names[mname.lower()]).copy())
+
+            # abbreviation
+            if ab.lower() in names:
+                return normalize_store_keys(xls.parse(names[ab.lower()]).copy())
+
+            # common patterns
+            candidates = []
+            if mnum:
+                candidates += [
+                    f"{mnum:02d}-{ystr}".lower(),   # 09-2025
+                    f"{ystr}_{mnum:02d}".lower(),   # 2025_09
+                ]
+            candidates += [
+                f"{mname}-{ystr}".lower(),         # September-2025
+                f"{mname} {ystr}".lower(),         # September 2025
+                f"{ab}-{ystr}".lower(),            # Sep-2025
+            ]
+
+            # contains search
+            for low, actual in names.items():
+                if any(cand in low for cand in candidates if cand):
+                    return normalize_store_keys(xls.parse(actual).copy())
+                if (mname.lower() in low) or (ab.lower() in low) or (mnum and f"{mnum:02d}" in low):
+                    return normalize_store_keys(xls.parse(actual).copy())
+
+            # final fallback: first sheet (but warn)
+            st.warning(f"Couldn't find a LOB sheet for **{mname} {ystr}**; using first sheet '{xls.sheet_names[0]}'.")
+            return normalize_store_keys(xls.parse(xls.sheet_names[0]).copy())
+
+        # ---------- filter ACTUALS (Maple) for the selected month/year ----------
+        maple_df = normalize_store_keys(maple_df)
+        spoc_df  = normalize_store_keys(spoc_df)
+
+        m = str(selected_month).strip()
+        y = int(selected_year)
+
+        if pd.api.types.is_numeric_dtype(maple_df.get("Month", pd.Series(dtype="int64"))):
+            try:
+                month_num = list(calendar.month_name).index(m.title())
+            except Exception:
+                month_num = pd.to_numeric(m, errors="coerce")
+            maple_filtered = maple_df[(maple_df["Month"].astype(int) == int(month_num)) & (maple_df["Year"].astype(int) == y)].copy()
+        else:
+            maple_filtered = maple_df[(maple_df["Month"].astype(str).str.strip().str.title() == m.title())
+                                      & (maple_df["Year"].astype(int) == y)].copy()
+
+        # Derive category if needed
+        if "Product Category" not in maple_filtered.columns or maple_filtered["Product Category"].isna().all():
+            maple_filtered["Product Category"] = maple_filtered["Product Type"].apply(categorize_product_type)
+        else:
+            maple_filtered["Product Category"] = maple_filtered["Product Category"].astype(str).str.title()
+
+        # ---------- LOB SALES pulled from the Google Sheets URL based on selected month sheet ----------
+        # Use the global URL variable you provided:
+        # LOB_SALES_FILE_URL = "https://docs.google.com/spreadsheets/d/1dbWaoHKj2vRASXQ2Zw1yUFgMM3bQXdZg/edit?usp=sharing&ouid=117925699190900838275&rtpof=true&sd=true"
+        lob_sales_filtered = load_lob_sales_from_url_for_selected_month(selected_month, selected_year, LOB_SALES_FILE_URL)
+
+        # Bring sales columns in and rename
+        rename_map = {}
+        if "iPhone" in lob_sales_filtered.columns: rename_map["iPhone"] = "Mobile Phone Sales"
+        if "Mac" in lob_sales_filtered.columns:    rename_map["Mac"]    = "Laptop Sales"
+        if "Grand Total" in lob_sales_filtered.columns: rename_map["Grand Total"] = "Total Sales"
+        lob_sales_filtered = lob_sales_filtered.rename(columns=rename_map)
+
+        for c in ["Mobile Phone Sales", "Laptop Sales", "Total Sales"]:
+            if c not in lob_sales_filtered.columns:
+                lob_sales_filtered[c] = 0
+        lob_sales_filtered = to_num(lob_sales_filtered, ["Mobile Phone Sales", "Laptop Sales", "Total Sales"])
+
+        # If Store State or Spoc Name missing in LOB, fill from SPOC Master
+        if ("Store State" not in lob_sales_filtered.columns) or lob_sales_filtered["Store State"].eq("").all():
+            # by Store Code
+            lob_sales_filtered = lob_sales_filtered.merge(
+                spoc_df[["Store Code", "Store State"]].drop_duplicates(),
+                on="Store Code", how="left", suffixes=("", "_spocfill")
+            )
+            if "Store State_spocfill" in lob_sales_filtered.columns:
+                lob_sales_filtered["Store State"] = lob_sales_filtered["Store State"].replace(
+                    "", lob_sales_filtered["Store State_spocfill"]
+                ).fillna(lob_sales_filtered["Store State_spocfill"])
+                lob_sales_filtered.drop(columns=["Store State_spocfill"], inplace=True, errors="ignore")
+            need = lob_sales_filtered["Store State"].isna() | lob_sales_filtered["Store State"].eq("")
+            if need.any():
+                lob_sales_filtered = lob_sales_filtered.merge(
+                    spoc_df[["Store Name", "Store State"]].drop_duplicates(),
+                    on="Store Name", how="left", suffixes=("", "_byname")
+                )
+                if "Store State_byname" in lob_sales_filtered.columns:
+                    lob_sales_filtered.loc[need, "Store State"] = lob_sales_filtered.loc[need, "Store State_byname"]
+                    lob_sales_filtered.drop(columns=["Store State_byname"], inplace=True, errors="ignore")
+            lob_sales_filtered["Store State"] = lob_sales_filtered["Store State"].replace("", "Unknown").fillna("Unknown")
+
+        if ("Spoc Name" not in lob_sales_filtered.columns) or lob_sales_filtered["Spoc Name"].eq("").all():
+            lob_sales_filtered = lob_sales_filtered.merge(
+                spoc_df[["Store Code", "Spoc Name"]].drop_duplicates(),
+                on="Store Code", how="left", suffixes=("", "_spocfill")
+            )
+            if "Spoc Name_spocfill" in lob_sales_filtered.columns:
+                lob_sales_filtered["Spoc Name"] = lob_sales_filtered["Spoc Name"].replace(
+                    "", lob_sales_filtered["Spoc Name_spocfill"]
+                ).fillna(lob_sales_filtered["Spoc Name_spocfill"])
+                lob_sales_filtered.drop(columns=["Spoc Name_spocfill"], inplace=True, errors="ignore")
+            need = lob_sales_filtered["Spoc Name"].isna() | lob_sales_filtered["Spoc Name"].eq("")
+            if need.any():
+                lob_sales_filtered = lob_sales_filtered.merge(
+                    spoc_df[["Store Name", "Spoc Name"]].drop_duplicates(),
+                    on="Store Name", how="left", suffixes=("", "_byname")
+                )
+                if "Spoc Name_byname" in lob_sales_filtered.columns:
+                    lob_sales_filtered.loc[need, "Spoc Name"] = lob_sales_filtered.loc[need, "Spoc Name_byname"]
+                    lob_sales_filtered.drop(columns=["Spoc Name_byname"], inplace=True, errors="ignore")
+            lob_sales_filtered["Spoc Name"] = lob_sales_filtered["Spoc Name"].replace("", "Unknown").fillna("Unknown")
+
+        # ---------- trade-in COUNTS for Mobile/Laptop from ACTUALS ----------
+        mobile_tradeins = (
+            maple_filtered[maple_filtered["Product Category"] == "Mobile Phone"]
+            .groupby(["Store Name", "Store State"], dropna=False)
+            .size().reset_index(name="Mobile Phone Trade-in")
+        )
+
+        laptop_tradeins = (
+            maple_filtered[maple_filtered["Product Category"] == "Laptop"]
+            .groupby(["Store Name", "Store State"], dropna=False)
+            .size().reset_index(name="Laptop Trade-in")
+        )
+
+        # ---------- base attach frame ----------
+        attach_df = lob_sales_filtered[[
+            "Store Name", "Store Code", "Store State", "Spoc Name",
+            "Mobile Phone Sales", "Laptop Sales", "Total Sales"
+        ]].copy()
+
+        # merge trade-ins on Store Name + Store State
+        attach_df = pd.merge(attach_df, mobile_tradeins, on=["Store Name", "Store State"], how="left")
+        attach_df = pd.merge(attach_df, laptop_tradeins, on=["Store Name", "Store State"], how="left")
+
+        attach_df["Mobile Phone Trade-in"] = attach_df["Mobile Phone Trade-in"].fillna(0).astype(int)
+        attach_df["Laptop Trade-in"] = attach_df["Laptop Trade-in"].fillna(0).astype(int)
+
+        # --- Overall Sale = Mobile Phone Trade-in + Laptop Trade-in (as per your requirement) ---
+        attach_df["Month Achieved"] = attach_df["Mobile Phone Trade-in"] + attach_df["Laptop Trade-in"]
+        attach_df["Overall Sale"] = attach_df["Month Achieved"]  # alias for clarity
+
+        # ---------- targets: pick from SPOC Master by Store Name for selected month ----------
+        # Find monthly target column
+        m_full = str(selected_month).strip().title()
+        m_abbr = m_full[:3]
+        target_candidates = [
+            f"{m_full} Target",             # September Target
+            f"{m_abbr} Target",             # Sep Target
+            f"Target ({m_full})",           # Target (September)
+            "Target"                        # plain Target
+        ]
+        target_col = next((c for c in target_candidates if c in spoc_df.columns), None)
+
+        if target_col is None:
+            attach_df["Target"] = 0
+            target_col = "Target"
+            st.warning(f"No obvious target column found for **{m_full}** in SPOC Master. Defaulting targets to 0.")
+        else:
+            tmp = spoc_df[["Store Name", target_col]].copy()
+            tmp[target_col] = pd.to_numeric(tmp[target_col], errors="coerce").fillna(0)
+            # Some stores may repeat; sum per store
+            store_targets = tmp.groupby("Store Name", as_index=False)[target_col].sum().rename(columns={target_col: "Target"})
+            attach_df = attach_df.merge(store_targets, on="Store Name", how="left")
+            attach_df["Target"] = attach_df["Target"].fillna(0)
+            target_col = "Target"
+
+        # ---------- metrics ----------
+        # Attach% by category vs SALES columns (if you want vs sales); but your requirement for "Overall Sale" uses trade-ins only.
+        attach_df["Mobile Phone Attach%"] = (
+            (attach_df["Mobile Phone Trade-in"] / attach_df["Mobile Phone Sales"].replace({0: np.nan})) * 100
+        ).round(2).fillna(0)
+
+        attach_df["Laptop Attach%"] = (
+            (attach_df["Laptop Trade-in"] / attach_df["Laptop Sales"].replace({0: np.nan})) * 100
+        ).round(2).fillna(0)
+
+        # Achievement vs target (trade-ins vs target)
+        attach_df["Achieved %"] = (
+            (attach_df["Month Achieved"] / attach_df[target_col].replace({0: np.nan})) * 100
+        ).round(2).fillna(0)
+
+        # Overall Attach% = Month Achieved / (Mobile+Laptop SALES) is common,
+        # but you've asked Overall Sale to be trade-in sum. We'll compute Overall Attach% vs SALES for insight,
+        # and also provide Overall Sale explicitly (trade-in sum).
+        attach_df["Overall Attach%"] = (
+            (attach_df["Month Achieved"] / (attach_df["Mobile Phone Sales"] + attach_df["Laptop Sales"]).replace({0: np.nan})) * 100
+        ).round(2).fillna(0)
+
+        # ---------- grand total ----------
+        grand = {
+            "Store Name": "Grand Total",
+            "Store Code": "",
+            "Spoc Name": "",
+            "Store State": "",
+            "Mobile Phone Sales": attach_df["Mobile Phone Sales"].sum(),
+            "Laptop Sales": attach_df["Laptop Sales"].sum(),
+            "Total Sales": attach_df["Total Sales"].sum(),
+            "Mobile Phone Trade-in": int(attach_df["Mobile Phone Trade-in"].sum()),
+            "Laptop Trade-in": int(attach_df["Laptop Trade-in"].sum()),
+            "Month Achieved": int(attach_df["Month Achieved"].sum()),
+            target_col: attach_df[target_col].sum()
+        }
+        grand_overall_sales = (grand["Mobile Phone Sales"] + grand["Laptop Sales"])
+        grand_overall_sale  = grand["Month Achieved"]  # as per requirement
+
+        grand["Mobile Phone Attach%"] = (grand["Mobile Phone Trade-in"] / grand["Mobile Phone Sales"] * 100) if grand["Mobile Phone Sales"] > 0 else 0
+        grand["Laptop Attach%"]      = (grand["Laptop Trade-in"] / grand["Laptop Sales"] * 100) if grand["Laptop Sales"] > 0 else 0
+        grand["Achieved %"]          = (grand["Month Achieved"] / grand[target_col] * 100) if grand[target_col] > 0 else 0
+        grand["Overall Attach%"]     = (grand["Month Achieved"] / grand_overall_sales * 100) if grand_overall_sales > 0 else 0
+        grand["Overall Sale"]        = grand_overall_sale
+
+        attach_df = pd.concat([attach_df, pd.DataFrame([grand])], ignore_index=True, sort=False)
+
+        # ---------- state summary / charts / tables ----------
+        st.subheader("Attach% by State")
+        attach_df["Store State"] = attach_df["Store State"].replace("", "Unknown").fillna("Unknown")
+
+        state_attach = attach_df.groupby("Store State", dropna=False).agg({
+            "Mobile Phone Sales": "sum",
+            "Laptop Sales": "sum",
+            "Total Sales": "sum",
+            "Mobile Phone Trade-in": "sum",
+            "Laptop Trade-in": "sum",
+            "Month Achieved": "sum",
+            target_col: "sum"
+        }).reset_index()
+
+        # Keep Overall Sale = Month Achieved at state level too
+        state_attach["Overall Sale"] = state_attach["Month Achieved"]
+
+        state_attach["Mobile Phone Attach%"] = (
+            (state_attach["Mobile Phone Trade-in"] / state_attach["Mobile Phone Sales"].replace({0: np.nan})) * 100
+        ).round(2).fillna(0)
+        state_attach["Laptop Attach%"] = (
+            (state_attach["Laptop Trade-in"] / state_attach["Laptop Sales"].replace({0: np.nan})) * 100
+        ).round(2).fillna(0)
+        state_attach["Achieved %"] = (
+            (state_attach["Month Achieved"] / state_attach[target_col].replace({0: np.nan})) * 100
+        ).round(2).fillna(0)
+        state_attach["Overall Attach%"] = (
+            (state_attach["Month Achieved"] / (state_attach["Mobile Phone Sales"] + state_attach["Laptop Sales"]).replace({0: np.nan})) * 100
+        ).round(2).fillna(0)
+
+        st.dataframe(state_attach)
+
+        fig_state = px.bar(
+            state_attach,
+            x="Store State",
+            y=["Mobile Phone Attach%", "Laptop Attach%", "Overall Attach%"],
+            title=f"Attach% by State ({selected_month} {selected_year})",
+            barmode="group",
+            text_auto=".2f"
+        )
+        fig_state.add_hline(
+            y=40, line_dash="dash", line_color="red", annotation_text="Threshold 40%", annotation_position="top right"
+        )
+        fig_state.update_layout(yaxis_title="Attach %", showlegend=True)
+        st.plotly_chart(fig_state, use_container_width=True)
+
+        st.subheader("Attach% by Store")
+        cols = [
+        "Store Name", "Store Code", "Spoc Name", "Store State",
+        "Mobile Phone Sales", "Mobile Phone Trade-in", "Mobile Phone Attach%",
+        "Laptop Sales", "Laptop Trade-in", "Laptop Attach%",
+        target_col, "Month Achieved", "Overall Sale", "Achieved %", "Overall Attach%"
+        ]
+        cols = [c for c in cols if c in attach_df.columns]
+        st.dataframe(attach_df[cols])
+
+        st.subheader("Top and Bottom Performers by Overall Attach%")
+        ranked = attach_df[attach_df["Store Name"] != "Grand Total"].copy()
+        ranked["Overall Attach%"] = pd.to_numeric(ranked["Overall Attach%"], errors="coerce").fillna(0)
+
+        top_performers = ranked[ranked["Overall Attach%"] > 40].nlargest(5, "Overall Attach%")
+        bottom_performers = ranked[ranked["Overall Attach%"] < 40].nsmallest(5, "Overall Attach%")
+
+        if not top_performers.empty:
+            st.write("**Top Performers (Overall Attach% > 40%)**")
+            st.dataframe(top_performers[["Store Name", "Spoc Name", "Store State", "Overall Attach%"]])
+            fig_top = px.bar(top_performers, x="Store Name", y="Overall Attach%", color="Spoc Name",
+                             title="Top Performers by Overall Attach%", text_auto=".2f")
+            fig_top.add_hline(y=40, line_dash="dash", line_color="red", annotation_text="Threshold 40%")
+            st.plotly_chart(fig_top, use_container_width=True)
+
+        if not bottom_performers.empty:
+            st.write("**Bottom Performers (Overall Attach% < 40%)**")
+            st.dataframe(bottom_performers[["Store Name", "Spoc Name", "Store State", "Overall Attach%"]])
+            fig_bottom = px.bar(bottom_performers, x="Store Name", y="Overall Attach%", color="Spoc Name",
+                               title="Bottom Performers by Overall Attach%", text_auto=".2f")
+            fig_bottom.add_hline(y=40, line_dash="dash", line_color="red", annotation_text="Threshold 40%")
+            st.plotly_chart(fig_bottom, use_container_width=True)
+
+        st.download_button(
+            label="Download Attach% Analysis as Excel",
+            data=create_excel_buffer(attach_df, "Attach% Analysis"),
+            file_name=f"attach_analysis_{selected_month}_{selected_year}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    # 2.6 Market Share Analysis
+    st.header("2.6 Market Share Analysis")
     zones = sorted(set(maple_df['Zone'].dropna())) if 'Zone' in maple_df.columns else ['Unknown']
     zone = st.selectbox("Select Zone", zones, key="zone_select_2_5")
     store_states = sorted(set(maple_df[maple_df['Zone'] == zone]['Store State'].dropna()) | {'Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry'}) if 'Zone' in maple_df.columns else ['Unknown']
@@ -1619,36 +1694,31 @@ def base_analysis(maple_df, cashify_df, spoc_df):
 
     # Ensure Product Category is defined
     if 'Product Category' not in maple_filtered.columns and 'Product Type' in maple_filtered.columns:
-        categories = {
-        'Mobile Phone': 'Mobile Phone',
-        'Tablet': 'Tablet',
-        'Laptop': 'Laptop',
-        'Smartwatch': 'Smartwatch'
-        }
+        categories = {'Mobile Phone': 'Mobile Phone', 'Tablet': 'Tablet', 'Laptop': 'Laptop', 'Smartwatch': 'Smartwatch'}
         maple_filtered['Product Category'] = maple_filtered['Product Type'].map(categories).fillna('Unknown')
     elif 'Product Category' not in maple_filtered.columns:
         maple_filtered['Product Category'] = 'Unknown'
 
     if 'Store State' not in maple_filtered.columns or 'Product Category' not in maple_filtered.columns:
         st.error("Required columns (Store State or Product Category) missing in Maple data")
-    else:   
-        # Create grouped data for visualization
+    else:
+        # Get state-wise acquisition by category
         state_category_data = maple_filtered.groupby(
             ['Store State', 'Product Category']
         ).size().reset_index(name='Device Count')
 
         if not state_category_data.empty:
-            # Visualization: Bar chart with states on x-axis and product categories
+        # Visualization: Bar chart with states on x-axis and product categories
             fig = px.bar(
-            state_category_data,
-            x='Store State',
-            y='Device Count',
-            color='Product Category',
-            title=f"Devices Acquired by Category Across States ({selected_month} {selected_year})",
-            text='Device Count',
-            height=600,
-            barmode='group',
-            color_discrete_sequence=px.colors.qualitative.Bold
+                state_category_data,
+                x='Store State',
+                y='Device Count',
+                color='Product Category',
+                title=f"Devices Acquired by Category Across States ({selected_month} {selected_year})",
+                text='Device Count',
+                height=600,
+                barmode='group',
+                color_discrete_sequence=px.colors.qualitative.Bold
             )
             fig.update_layout(
             xaxis_title="State",
@@ -1656,37 +1726,30 @@ def base_analysis(maple_df, cashify_df, spoc_df):
             legend_title="Device Category",
             xaxis_tickangle=45,
             font=dict(size=14),
-            legend=dict(
-                yanchor="top", y=0.99,
-                xanchor="left", x=0.01,
-                bgcolor="white", bordercolor="Black", borderwidth=1
-                )
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="white", bordercolor="Black", borderwidth=1)
             )
             fig.update_traces(textposition='auto', textfont=dict(size=12))
             st.plotly_chart(fig, use_container_width=True)
 
-            # Pivot table for state vs category
-            pivot_table = (
-                state_category_data
-                .pivot(index='Store State', columns='Product Category', values='Device Count')
-                .fillna(0)
-                .astype(int)
-                .reset_index()
+            # Raw data table
+            st.subheader("Detailed Device Acquisition Data")
+            st.dataframe(
+                state_category_data.sort_values(['Store State', 'Device Count'], ascending=[True, False]),
+                column_config={
+                "Product Category": st.column_config.TextColumn("Device Category", width="medium")
+                }
             )
 
-            st.subheader("Pivot Table: Device Acquisition by State and Category")
-            st.dataframe(pivot_table)
-
-            # Download button for pivot table
+            # Download button
             st.download_button(
-                label="Download Pivot Table (State vs Category)",
-                data=pivot_table.to_csv(index=False).encode('utf-8'),
-                file_name=f"state_category_pivot_{selected_month}_{selected_year}.csv",
-                mime="text/csv"
+            label="Download State-wise Acquisition Data",
+            data=state_category_data.to_csv(index=False).encode('utf-8'),
+            file_name=f"state_category_acquisition_{selected_month}_{selected_year}.csv",
+            mime="text/csv"
             )
         else:
             st.warning("No data available for state-wise category analysis")
-            
+
     # Section 5: Detailed Pricing Comparison
     st.header("5. Pricing Comparison for Lost Devices")
 
@@ -2070,100 +2133,96 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
         daily_ms['Market Share'] = daily_ms.apply(lambda r: calculate_market_share(r['Maple'], r['Maple'] + r['Cashify']), axis=1)
         daily_ms['Delta'] = daily_ms['Market Share'].diff()
 
-    # Create figure with colored markers
-    fig_trend = go.Figure()
+        # Create figure with colored markers
+        fig_trend = go.Figure()
 
-    # Add the main line
-    fig_trend.add_trace(go.Scatter(
-        x=daily_ms.index, 
-        y=daily_ms['Market Share'], 
-        name='Market Share', 
-        mode='lines',
-        line=dict(color='royalblue'),
-        showlegend=False
-    ))
-
-    # Add increasing points (green)
-    increasing = daily_ms[daily_ms['Delta'] > 0]
-    if not increasing.empty:
+        # Add the main line
         fig_trend.add_trace(go.Scatter(
-            x=increasing.index,
-            y=increasing['Market Share'],
-            mode='markers',
-            marker=dict(color='green', size=8),
-            name='Increasing',
+            x=daily_ms.index, 
+            y=daily_ms['Market Share'], 
+            name='Market Share', 
+            mode='lines',
+            line=dict(color='royalblue'),
             showlegend=False
         ))
 
-    # Add decreasing points (red)
-    decreasing = daily_ms[daily_ms['Delta'] < 0]
-    if not decreasing.empty:
-        fig_trend.add_trace(go.Scatter(
-            x=decreasing.index,
-            y=decreasing['Market Share'],
-            mode='markers',
-            marker=dict(color='red', size=8),
-            name='Decreasing',
-            showlegend=False
-        ))
+        # Add increasing points (green)
+        increasing = daily_ms[daily_ms['Delta'] > 0]
+        if not increasing.empty:
+            fig_trend.add_trace(go.Scatter(
+                x=increasing.index,
+                y=increasing['Market Share'],
+                mode='markers',
+                marker=dict(color='green', size=8),
+                name='Increasing',
+                showlegend=False
+            ))
 
-    # Add neutral points (grey) - only if we want to show them
-    neutral = daily_ms[daily_ms['Delta'] == 0]
-    if not neutral.empty:
-        fig_trend.add_trace(go.Scatter(
-            x=neutral.index,
-            y=neutral['Market Share'],
-            mode='markers',
-            marker=dict(color='grey', size=6),
-            name='Neutral',
-            showlegend=False
-        ))
+        # Add decreasing points (red)
+        decreasing = daily_ms[daily_ms['Delta'] < 0]
+        if not decreasing.empty:
+            fig_trend.add_trace(go.Scatter(
+                x=decreasing.index,
+                y=decreasing['Market Share'],
+                mode='markers',
+                marker=dict(color='red', size=8),
+                name='Decreasing',
+                showlegend=False
+            ))
 
-    fig_trend.update_layout(
-        title=f"Market Share Trend for {selected_zone_adv} Zone (Last {timeframe_days} Days{' - Hourly View' if timeframe_days == 1 else ''})",
-        yaxis_title="Market Share (%)",
-        xaxis_title="Time (Hourly)" if timeframe_days == 1 else "Date",
-        hovermode="x unified"
-    )
+        # Add neutral points (grey)
+        neutral = daily_ms[daily_ms['Delta'] == 0]
+        if not neutral.empty:
+            fig_trend.add_trace(go.Scatter(
+                x=neutral.index,
+                y=neutral['Market Share'],
+                mode='markers',
+                marker=dict(color='grey', size=6),
+                name='Neutral',
+                showlegend=False
+            ))
 
-    # Add data table below the chart
-    st.plotly_chart(fig_trend, use_container_width=True)
+        fig_trend.update_layout(
+            title=f"Market Share Trend for {selected_zone_adv} Zone (Last {timeframe_days} Days{' - Hourly View' if timeframe_days == 1 else ''})",
+            yaxis_title="Market Share (%)",
+            xaxis_title="Time (Hourly)" if timeframe_days == 1 else "Date",
+            hovermode="x unified"
+        )
 
-    # Display data containers
-    with st.expander("View Raw Data"):
-        st.write("### Market Share Trend Data")
-        st.dataframe(daily_ms)
+        st.plotly_chart(fig_trend, use_container_width=True)
 
-        # Summary statistics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(
-                label="Average Market Share",
-                value=f"{daily_ms['Market Share'].mean():.1f}%",
-                delta=f"{daily_ms['Market Share'].iloc[-1] - daily_ms['Market Share'].iloc[0]:.1f}%",
-                delta_color="normal"
-            )
-        with col2:
-            st.metric(
-                label="Highest Market Share",
-                value=f"{daily_ms['Market Share'].max():.1f}%",
-                delta=f"on {daily_ms['Market Share'].idxmax().strftime('%b %d')}"
-            )
-        with col3:
-            st.metric(
-                label="Lowest Market Share",
-                value=f"{daily_ms['Market Share'].min():.1f}%",
-                delta=f"on {daily_ms['Market Share'].idxmin().strftime('%b %d')}"
-            )
+        with st.expander("View Raw Data"):
+            st.write("### Market Share Trend Data")
+            st.dataframe(daily_ms)
 
-    # Download button
-    csv = daily_ms.to_csv(index=True).encode('utf-8')
-    st.download_button(
-        label="Download Market Share Data as CSV",
-        data=csv,
-        file_name=f"market_share_trend_{selected_zone_adv}_{timeframe_days}days.csv",
-        mime="text/csv"
-    )
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(
+                    label="Average Market Share",
+                    value=f"{daily_ms['Market Share'].mean():.1f}%",
+                    delta=f"{daily_ms['Market Share'].iloc[-1] - daily_ms['Market Share'].iloc[0]:.1f}%",
+                    delta_color="normal"
+                )
+            with col2:
+                st.metric(
+                    label="Highest Market Share",
+                    value=f"{daily_ms['Market Share'].max():.1f}%",
+                    delta=f"on {daily_ms['Market Share'].idxmax().strftime('%b %d')}"
+                )
+            with col3:
+                st.metric(
+                    label="Lowest Market Share",
+                    value=f"{daily_ms['Market Share'].min():.1f}%",
+                    delta=f"on {daily_ms['Market Share'].idxmin().strftime('%b %d')}"
+                )
+
+        csv = daily_ms.to_csv(index=True).encode('utf-8')
+        st.download_button(
+            label="Download Market Share Data as CSV",
+            data=csv,
+            file_name=f"market_share_trend_{selected_zone_adv}_{timeframe_days}days.csv",
+            mime="text/csv"
+        )
 
     # 2. State Performance in Zone
     st.header(f"2. State Performance in {selected_zone_adv} Zone (Last 30 Days)")
@@ -2212,7 +2271,6 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
         st.subheader("Loss by Product Category (LOB)")
         lob_loss = cashify_last_6m.groupby(['Month', 'Product Category']).size().reset_index(name='Count')
 
-        # Create a larger, clearer visualization
         fig_lob_loss = px.bar(
             lob_loss, 
             x='Month', 
@@ -2233,16 +2291,13 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
         st.plotly_chart(fig_lob_loss, use_container_width=True)
 
         st.subheader("Top 10 Stores with Highest Losses (and Top Lost Devices)")
-        # Get top 10 stores by total losses
         store_loss_total = cashify_last_6m.groupby(['Store Name', 'Store State']).size().reset_index(name='Total Losses').sort_values('Total Losses', ascending=False).head(10)
 
         if not store_loss_total.empty:
-            # Get top lost devices for each store
             top_device_loss = cashify_last_6m[cashify_last_6m['Store Name'].isin(store_loss_total['Store Name'])]
             top_device_loss = top_device_loss.groupby(['Store Name', 'Old Device Name']).size().reset_index(name='Device Count')
             top_device_loss = top_device_loss.loc[top_device_loss.groupby('Store Name')['Device Count'].idxmax()]
 
-            # Merge with total losses
             store_loss_final = pd.merge(
                 store_loss_total,
                 top_device_loss[['Store Name', 'Old Device Name', 'Device Count']],
@@ -2250,13 +2305,11 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
                 how='left'
             )
 
-            # Rename columns for clarity
             store_loss_final.rename(columns={
                 'Old Device Name': 'Top Lost Device',
                 'Device Count': 'Top Device Loss Count'
             }, inplace=True)
 
-            # Add SPOC information
             store_loss_final = pd.merge(
                 store_loss_final,
                 spoc_df[['Store Name', 'Spoc Name']].drop_duplicates(),
@@ -2264,12 +2317,10 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
                 how='left'
             )
 
-            # Reorder columns
             store_loss_final = store_loss_final[['Store Name', 'Store State', 'Spoc Name', 'Total Losses', 'Top Lost Device', 'Top Device Loss Count']]
 
             st.dataframe(store_loss_final)
 
-            # Download button
             st.download_button(
                 label="Download Top Loss Stores as Excel",
                 data=create_excel_buffer(store_loss_final, 'Top Loss Stores'),
@@ -2281,7 +2332,6 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
     st.header("5. Highest Productive Stores (Last 6 Months)")
     last_6_months = get_last_n_months_for_page(6)
 
-    # Add zone filter
     zone_filter = st.selectbox("Select Zone for Store Productivity", ['South', 'West'], key="store_prod_zone")
 
     maple_last_6m = maple_df[
@@ -2291,17 +2341,11 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
     ]
 
     if not maple_last_6m.empty:
-        # Get top 6 stores in the selected zone
         top_6_stores = maple_last_6m.groupby('Store Name').size().nlargest(6).index
-
-        # Prepare data for visualization
         top_stores_monthly = maple_last_6m[maple_last_6m['Store Name'].isin(top_6_stores)].groupby(['Store Name', 'Month']).size().reset_index(name='Count')
-
-        # Ensure correct month ordering
         month_order = [m[0] for m in last_6_months]
         top_stores_monthly['Month'] = pd.Categorical(top_stores_monthly['Month'], categories=month_order, ordered=False)
 
-        # Create visualization
         fig_prod = px.line(
             top_stores_monthly, 
             x='Month', 
@@ -2321,7 +2365,6 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
         st.plotly_chart(fig_prod, use_container_width=True)
     else:
         st.warning(f"No data available for {zone_filter} zone in the last 6 months")
-
 
     # 6. Monthly SPOC Target Performance
     st.header("6. SPOC Target Performance (Current vs. Previous Month)")
@@ -2373,7 +2416,6 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
             axis=1
         ).round(2)
 
-        # Add SPOC information
         store_perf_df = pd.merge(
             store_perf_df,
             spoc_df[['Store Name', 'Spoc Name']].drop_duplicates(),
@@ -2390,6 +2432,71 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
 
         st.subheader("Stores where Cashify Outperforms Maple")
         st.dataframe(store_perf_df[store_perf_df['Cashify Count'] > store_perf_df['Maple Count']].sort_values('Cashify Count', ascending=False))
+
+def main():
+    if not st.session_state.get('authenticated', False):
+        login()
+        return
+
+    logout()
+
+    with st.spinner("Loading data..."):
+        if st.session_state.get('maple_data') is None:
+            st.session_state.maple_data = load_excel_from_url(MAPLE_FILE_URL)
+        if st.session_state.get('cashify_data') is None:
+            st.session_state.cashify_data = load_excel_from_url(CASHIFY_FILE_URL)
+        if st.session_state.get('spoc_data') is None:
+            st.session_state.spoc_data = load_excel_from_url(SPOC_FILE_URL)
+        if st.session_state.get('lob_sales_data') is None:
+            st.session_state.lob_sales_data = load_excel_from_url(LOB_SALES_FILE_URL)
+
+    maple_df = st.session_state.maple_data
+    cashify_df = st.session_state.cashify_data
+    spoc_df = st.session_state.spoc_data
+    lob_sales_df = st.session_state.lob_sales_data
+
+    if maple_df is None or cashify_df is None or spoc_df is None or lob_sales_df is None:
+        st.error("Failed to load one or more data files. Please check the URLs or network connection.")
+        st.stop()
+
+    # Column mapping and validation
+    maple_df, maple_mapping = validate_and_map_columns(maple_df, MAPLE_REQUIRED_COLUMNS, "Maple")
+    cashify_df, cashify_mapping = validate_and_map_columns(cashify_df, CASHIFY_REQUIRED_COLUMNS, "Cashify")
+    spoc_df, spoc_mapping = validate_and_map_columns(spoc_df, SPOC_REQUIRED_COLUMNS, "SPOC")
+    lob_sales_df, lob_sales_mapping = validate_and_map_columns(lob_sales_df, LOB_SALES_REQUIRED_COLUMNS, "LOB_Sales")
+
+    if maple_df is None or cashify_df is None or spoc_df is None or lob_sales_df is None:
+        st.warning("Please complete column mapping to proceed.")
+        st.stop()
+
+    # Data standardization
+    maple_df = standardize_month(maple_df)
+    cashify_df = standardize_month(cashify_df)
+    spoc_df = standardize_names(spoc_df)
+    maple_df = standardize_names(maple_df)
+    cashify_df = standardize_names(cashify_df)
+
+    # Convert date columns to datetime
+    maple_df['Created Date'] = pd.to_datetime(maple_df['Created Date'], errors='coerce')
+    cashify_df['Order Date'] = pd.to_datetime(cashify_df['Order Date'], errors='coerce')
+
+    # Map store names and states
+    maple_df = map_store_names_and_states(maple_df, spoc_df)
+    cashify_df = map_store_names_and_states(cashify_df, spoc_df, is_maple=False)
+    
+    if 'SPOC_ID' not in spoc_df.columns and 'Spoc Name' in spoc_df.columns and 'Store State' in spoc_df.columns:
+        spoc_df['SPOC_ID'] = spoc_df.apply(lambda row: generate_spoc_id(row['Spoc Name'], row['Store Name'], row['Store State']), axis=1)
+    
+    if 'SPOC_ID' not in maple_df.columns and 'Spoc Name' in maple_df.columns and 'Store Name' in maple_df.columns and 'Store State' in maple_df.columns:
+        maple_df = pd.merge(maple_df, spoc_df[['Spoc Name', 'Store Name', 'Store State', 'SPOC_ID']].drop_duplicates(), on=['Spoc Name', 'Store Name', 'Store State'], how='left')
+
+    # Page selection
+    page = st.sidebar.radio("Go to", ["Base Analysis", "Advanced Analytics"])
+
+    if page == "Base Analysis":
+        base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df)
+    elif page == "Advanced Analytics":
+        advanced_analytics(maple_df, cashify_df, spoc_df)
 
 if __name__ == "__main__":
     main()
