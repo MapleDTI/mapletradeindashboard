@@ -1533,7 +1533,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         }).reset_index()
 
         # Keep Overall Sale = Month Achieved at state level too
-        state_attach["Overall Sale"] = state_attach["Month Achieved"]
+        #state_attach["Overall Sale"] = state_attach["Month Achieved"]
 
         state_attach["Mobile Phone Attach%"] = (
             (state_attach["Mobile Phone Trade-in"] / state_attach["Mobile Phone Sales"].replace({0: np.nan})) * 100
@@ -1569,7 +1569,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         "Store Name", "Store Code", "Spoc Name", "Store State",
         "Mobile Phone Sales", "Mobile Phone Trade-in", "Mobile Phone Attach%",
         "Laptop Sales", "Laptop Trade-in", "Laptop Attach%",
-        target_col, "Month Achieved", "Overall Sale", "Achieved %", "Overall Attach%"
+        target_col, "Month Achieved", "Total Sale", "Achieved %", "Overall Attach%"
         ]
         cols = [c for c in cols if c in attach_df.columns]
         st.dataframe(attach_df[cols])
