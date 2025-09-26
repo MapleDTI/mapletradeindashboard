@@ -1444,7 +1444,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
 
         # --- Overall Sale = Mobile Phone Trade-in + Laptop Trade-in (as per your requirement) ---
         attach_df["Month Achieved"] = attach_df["Mobile Phone Trade-in"] + attach_df["Laptop Trade-in"]
-        attach_df["Overall Sale"] = attach_df["Month Achieved"]  # alias for clarity
+        #attach_df["Overall Sale"] = attach_df["Month Achieved"]  # alias for clarity
 
         # ---------- targets: pick from SPOC Master by Store Name for selected month ----------
         # Find monthly target column
