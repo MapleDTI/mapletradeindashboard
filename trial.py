@@ -653,7 +653,7 @@ def process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, 
     st.plotly_chart(fig, use_container_width=True)
 
 def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
-    st.title("Maple vs Cashify Analytics Dashboard")
+    st.title("Maple Trade-in Performance Analytics Dashboard")
     current_date = date.today().strftime("%B %d, %Y")
     st.markdown(f"**Current Date:** {current_date}")
     st.header("Filters")
