@@ -21,7 +21,7 @@ import time
 logging.basicConfig(filename='debug.log', level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # Set page config
-st.set_page_config(page_title="Maple vs Cashify Analytics", layout="wide")
+st.set_page_config(page_title="Maple Trade-In performance Analytics", layout="wide")
 
 # Initialize session state
 if 'maple_data' not in st.session_state:
