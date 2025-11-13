@@ -60,6 +60,16 @@ users = {
     "manoj_kanagaraja": {"password": "Manoj#2025", "name": "Manoj Kanagaraja", "regions": ["Tamil Nadu", "Kerala", "Puducherry"]}
 }
 
+# Allowed users for RM filter
+ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish_shah", "manil_shetty"]
+
+# Regional Managers and their states
+RM_STATES = {
+    "Sandeep Selvamani": ["Karnataka", "Andhra Pradesh", "Telangana"],
+    "Manoj Kanagaraja": ["Kerala", "Tamil Nadu", "Puducherry"],
+    "Mahendra Tomar": ["Maharashtra"]
+}
+
 # Expected columns
 MAPLE_REQUIRED_COLUMNS = [
     'Service Number', 'Status', 'Old IMEI No', 'Created Date', 'Month', 'Year',
@@ -1516,6 +1526,24 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
             (attach_df["Month Achieved"] / (attach_df["Mobile Phone Sales"] + attach_df["Laptop Sales"]).replace({0: np.nan})) * 100
         ).round(2).fillna(0)
 
+        # Regional Manager Filter for allowed users
+        username = st.session_state.username
+        is_allowed_rm_user = username in ALLOWED_RM_USERS
+        selected_states = None
+        if is_allowed_rm_user:
+            tab1, tab2 = st.tabs(["Regional Manager", "States"])
+            with tab1:
+                selected_rm = st.selectbox("Select Regional Manager", list(RM_STATES.keys()), key="rm_select")
+            with tab2:
+                rm_states = RM_STATES.get(selected_rm, [])
+                selected_states = st.multiselect("Select States", rm_states, default=rm_states, key="state_select_attach")
+            if selected_states:
+                attach_df = attach_df[attach_df['Store State'].isin(selected_states)].copy()
+        else:
+            # For non-allowed users, use existing user_regions if any
+            if st.session_state.user_regions and 'Store State' in attach_df.columns:
+                attach_df = attach_df[attach_df['Store State'].isin(st.session_state.user_regions)].copy()
+
         # ---------- grand total ----------
         grand = {
             "Store Name": "Grand Total",
@@ -2141,7 +2169,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
                             data=final_buffer,
                             file_name=f"detailed_loss_all_states_{selected_month}_{selected_year}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )    
+                        )     
     
 def advanced_analytics(maple_df, cashify_df, spoc_df):
     st.title("Advanced Analytics & SPOC Performance")
