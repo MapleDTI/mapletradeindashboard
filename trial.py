@@ -36,6 +36,8 @@ if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 if 'username' not in st.session_state:
     st.session_state.username = None
+if 'user_regions' not in st.session_state:
+    st.session_state.user_regions = None
 if 'column_mappings' not in st.session_state:
     st.session_state.column_mappings = {'Maple': {}, 'Cashify': {}, 'SPOC': {}, 'LOB_Sales': {}}
 if 'spoc_mapping_complete' not in st.session_state:
@@ -53,7 +55,9 @@ users = {
     "manil_shetty": {"password": "Manil@2025", "name": "Manil Shetty"},
     "hari_raja": {"password": "hari*marketing#2025", "name": "Hari Raja"},
     "hardik_nahar": {"password": "hardik%2025", "name": "Hardik Nahar"},
-    "sohail_panjawani": {"password": "sohail@2025", "name": "Sohail Panjawani"}
+    "sohail_panjawani": {"password": "sohail@2025", "name": "Sohail Panjawani"},
+    "sandeep_selvamani": {"password": "Sandeep@2025", "name": "Sandeep Selvamani", "regions": ["Karnataka", "Andhra Pradesh", "Telangana"]},
+    "manoj_kanagaraja": {"password": "Manoj#2025", "name": "Manoj Kanagaraja", "regions": ["Tamil Nadu", "Kerala", "Puducherry"]}
 }
 
 # Expected columns
@@ -107,6 +111,12 @@ def load_excel_from_url(url, retries=3, timeout=30):
                 continue
             st.error(f"Failed to load file from {url}: {e}")
             return None
+
+def filter_by_user_regions(df, user_regions):
+    """Filter dataframe by user regions if specified."""
+    if not user_regions or 'Store State' not in df.columns:
+        return df
+    return df[df['Store State'].isin(user_regions)].copy()
 
 def standardize_state_names(df, state_col='Store State'):
     if state_col in df.columns:
@@ -411,6 +421,7 @@ def login():
         if username in users and users[username]["password"] == password:
             st.session_state.authenticated = True
             st.session_state.username = username
+            st.session_state.user_regions = users[username].get("regions")
             st.sidebar.success(f"Welcome, {users[username]['name']}!")
         else:
             st.sidebar.error("Invalid username or password")
@@ -419,6 +430,7 @@ def logout():
     if st.sidebar.button("Logout"):
         st.session_state.authenticated = False
         st.session_state.username = None
+        st.session_state.user_regions = None
         st.session_state.column_mappings = {'Maple': {}, 'Cashify': {}, 'SPOC': {}, 'LOB_Sales': {}}
         st.session_state.spoc_mapping_complete = False
         st.session_state.spoc_ids = {}
@@ -877,14 +889,16 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
     all_states = [state for states in zone_state_map.values() for state in states]
     state_to_zone = {state: zone for zone, states in zone_state_map.items() for state in states}
 
-    state_dropdown = st.selectbox("Select State (South or West Zone)", all_states, key="state_select_2_1")
+    user_states = st.session_state.user_regions or all_states
+    available_states = [s for s in all_states if s in user_states]
+    state_dropdown = st.selectbox("Select State (South or West Zone)", available_states, key="state_select_2_1")
 
     device_data = []
     excel_data = []
 
     if 'Zone' in maple_filtered.columns and 'Store State' in maple_filtered.columns:
         maple_filtered['Created Date'] = pd.to_datetime(maple_filtered['Created Date'], errors='coerce')
-        all_zone_states = set(all_states)
+        all_zone_states = set(available_states)
 
         filtered_data = maple_filtered[
             (maple_filtered['Store State'].isin(all_zone_states)) &
@@ -894,8 +908,11 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
 
         if not filtered_data.empty:
             for zone, states in zone_state_map.items():
+                zone_states = [s for s in states if s in available_states]
+                if not zone_states:
+                    continue
                 zone_stores = filtered_data[filtered_data['Zone'] == zone]['Store Name'].unique()
-                for state in states:
+                for state in zone_states:
                     state_data = filtered_data[filtered_data['Store State'] == state]
                     if state_data.empty:
                         continue
@@ -1059,10 +1076,11 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
     # 2.4 State-wise Device Counts and Top Performer SPOCs
     st.header("2.4 State-wise Device Counts and Top Performer SPOCs")
     south_states = ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry']
+    user_south_states = [s for s in south_states if s in (st.session_state.user_regions or south_states)]
     if 'Store State' in maple_filtered.columns and 'Store State' in cashify_filtered.columns:
         st.write("**Device Counts per State (South Zone)**")
-        maple_state_counts = maple_filtered[maple_filtered['Store State'].isin(south_states)].groupby('Store State').size().reset_index(name='Maple Device Count')
-        cashify_state_counts = cashify_filtered[cashify_filtered['Store State'].isin(south_states)].groupby('Store State').size().reset_index(name='Cashify Device Count')
+        maple_state_counts = maple_filtered[maple_filtered['Store State'].isin(user_south_states)].groupby('Store State').size().reset_index(name='Maple Device Count')
+        cashify_state_counts = cashify_filtered[cashify_filtered['Store State'].isin(user_south_states)].groupby('Store State').size().reset_index(name='Cashify Device Count')
         state_counts = pd.merge(maple_state_counts, cashify_state_counts, on='Store State', how='outer').fillna(0)
         state_counts_melted = pd.melt(
             state_counts,
@@ -1091,7 +1109,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         last_n_months = get_last_n_months(selected_month, selected_year, 2) if selected_month != "All" else [(selected_month, selected_year)]
         spoc_achievements = []
         for month, year in last_n_months:
-            temp_maple = maple_df[(maple_df['Month'] == month) & (maple_df['Year'] == year) & (maple_df['Store State'].isin(south_states))]
+            temp_maple = maple_df[(maple_df['Month'] == month) & (maple_df['Year'] == year) & (maple_df['Store State'].isin(user_south_states))]
             temp_ach = temp_maple.groupby(['Spoc Name', 'Store Name', 'Month']).size().reset_index(name='Achievement')
             temp_ach['Year'] = year
             spoc_achievements.append(temp_ach)
@@ -1104,7 +1122,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
             on=['Spoc Name', 'Store Name'],
             how='inner'
         )
-        top_spoc_df = top_spoc_df[top_spoc_df['Store State'].isin(south_states)]
+        top_spoc_df = top_spoc_df[top_spoc_df['Store State'].isin(user_south_states)]
         for month in ['January', 'February', 'March', 'April', 'May', 'June',
                       'July', 'August', 'September', 'October', 'November', 'December']:
             target_col = f"{month} Target"
@@ -1416,6 +1434,11 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
                     lob_sales_filtered.drop(columns=["Spoc Name_byname"], inplace=True, errors="ignore")
             lob_sales_filtered["Spoc Name"] = lob_sales_filtered["Spoc Name"].replace("", "Unknown").fillna("Unknown")
 
+        # Filter LOB sales by user regions
+        user_regions = st.session_state.user_regions
+        if user_regions and 'Store State' in lob_sales_filtered.columns:
+            lob_sales_filtered = lob_sales_filtered[lob_sales_filtered['Store State'].isin(user_regions)]
+
         # ---------- trade-in COUNTS for Mobile/Laptop from ACTUALS ----------
         mobile_tradeins = (
             maple_filtered[maple_filtered["Product Category"] == "Mobile Phone"]
@@ -1609,9 +1632,12 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
     zones = sorted(set(maple_df['Zone'].dropna())) if 'Zone' in maple_df.columns else ['Unknown']
     zone = st.selectbox("Select Zone", zones, key="zone_select_2_5")
     store_states = sorted(set(maple_df[maple_df['Zone'] == zone]['Store State'].dropna()) | {'Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry'}) if 'Zone' in maple_df.columns else ['Unknown']
-    if not store_states:
-        store_states = sorted(set(spoc_df['Store State'].dropna()) | {'Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry'}) if 'Store State' in spoc_df.columns else ['Unknown']
-    store_state = st.selectbox("Select Store State", store_states, key="state_select_2_5")
+    user_states = st.session_state.user_regions or store_states
+    available_states = [s for s in store_states if s in user_states]
+    if not available_states:
+        available_states = sorted(set(spoc_df['Store State'].dropna()) | {'Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry'}) if 'Store State' in spoc_df.columns else ['Unknown']
+        available_states = [s for s in available_states if s in user_states]
+    store_state = st.selectbox("Select Store State", available_states, key="state_select_2_5")
     store_names = sorted(set(maple_filtered[maple_filtered['Store State'] == store_state]['Store Name'].dropna()))
     if not store_names:
         st.warning("No store names available for the selected store state.")
@@ -1949,9 +1975,9 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         if not spoc_weekoffs:
             st.info("No weekoff data available in SPOC data")
         else:
-            # State dropdown
-            available_states = spoc_df['Store State'].dropna().unique() if 'Store State' in spoc_df.columns else []
-            selected_state = st.selectbox("Select State", sorted(available_states), key="state_select_weekoff")
+            # State dropdown - filter by user regions
+            available_states = sorted(set(spoc_df['Store State'].dropna().unique()) & set(st.session_state.user_regions or spoc_df['Store State'].dropna().unique()))
+            selected_state = st.selectbox("Select State", available_states, key="state_select_weekoff")
 
             # SPOCs in state and stores without SPOCs
             state_spocs = spoc_df[spoc_df['Store State'] == selected_state]['Spoc Name'].dropna().unique()
@@ -2239,10 +2265,12 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
     # 2. State Performance in Zone
     st.header(f"2. State Performance in {selected_zone_adv} Zone (Last 30 Days)")
     states_in_zone = maple_df[maple_df['Zone'] == selected_zone_adv]['Store State'].dropna().unique()
+    user_states = st.session_state.user_regions or states_in_zone
+    filtered_states = [s for s in states_in_zone if s in user_states]
     state_perf_data = []
-    if len(states_in_zone) > 0:
+    if len(filtered_states) > 0:
         end_date = maple_df['Created Date'].max()
-        for state in states_in_zone:
+        for state in filtered_states:
             maple_state = len(maple_df[(maple_df['Store State'] == state) & (maple_df['Created Date'] >= end_date - timedelta(days=30))])
             cashify_state = len(cashify_df[(cashify_df['Store State'] == state) & (cashify_df['Order Date'] >= end_date - timedelta(days=30))])
             state_ms = calculate_market_share(maple_state, maple_state + cashify_state)
@@ -2495,6 +2523,13 @@ def main():
     # Map store names and states
     maple_df = map_store_names_and_states(maple_df, spoc_df)
     cashify_df = map_store_names_and_states(cashify_df, spoc_df, is_maple=False)
+    
+    # Filter data by user regions
+    user_regions = st.session_state.user_regions
+    maple_df = filter_by_user_regions(maple_df, user_regions)
+    cashify_df = filter_by_user_regions(cashify_df, user_regions)
+    spoc_df = filter_by_user_regions(spoc_df, user_regions)
+    lob_sales_df = filter_by_user_regions(lob_sales_df, user_regions)
     
     if 'SPOC_ID' not in spoc_df.columns and 'Spoc Name' in spoc_df.columns and 'Store State' in spoc_df.columns:
         spoc_df['SPOC_ID'] = spoc_df.apply(lambda row: generate_spoc_id(row['Spoc Name'], row['Store Name'], row['Store State']), axis=1)
