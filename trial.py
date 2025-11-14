@@ -56,6 +56,7 @@ users = {
     "hari_raja": {"password": "hari*marketing#2025", "name": "Hari Raja"},
     "hardik_nahar": {"password": "hardik%2025", "name": "Hardik Nahar"},
     "sohail_panjawani": {"password": "sohail@2025", "name": "Sohail Panjawani"},
+    "chandrakant_sonawane": {"password": "Chandrakant$2025", "name": "Chandrakant Sonawane"},
     "sandeep_selvamani": {"password": "Sandeep@2025", "name": "Sandeep Selvamani", "regions": ["Karnataka", "Andhra Pradesh", "Telangana"]},
     "manoj_kanagaraja": {"password": "Manoj#2025", "name": "Manoj Kanagaraja", "regions": ["Tamil Nadu", "Kerala", "Puducherry"]}
 }
