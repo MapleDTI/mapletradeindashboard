@@ -62,7 +62,7 @@ users = {
 }
 
 # Allowed users for RM filter
-ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish_shah", "manil_shetty"]
+ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish_shah", "manil_shetty","chandrakant_sonawane"]
 
 # Regional Managers and their states
 RM_STATES = {
