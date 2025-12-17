@@ -2,8 +2,8 @@ from unicodedata import category
 import numpy as np
 import streamlit as st   
 import pandas as pd 
-import plotly.express as px 
-import plotly.graph_objects as go
+import plotly.express as px  
+import plotly.graph_objects as go 
 from datetime import datetime, date, timedelta
 import io
 from io import BytesIO
@@ -12,7 +12,7 @@ import os
 import logging
 import calendar
 import uuid
-import gdown 
+import gdown
 import requests
 import time
 
@@ -63,7 +63,7 @@ users = {
 }
 
 # Allowed users for RM filter
-ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish_shah", "manil_shetty","chandrakant_sonawane","rohit_pujari"]
+ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish_shah", "manil_shetty","chandrakant_sonawane", "rohit_pujari"]
 
 # Regional Managers and their states
 RM_STATES = {
@@ -394,20 +394,31 @@ def get_last_n_weeks(selected_month, selected_year, spoc, n=4):
         week_num += 1
     return weeks[-n:] if n <= len(weeks) else weeks
 
-def categorize_product_type(product_type):
-    if pd.isna(product_type):
+#def categorize_product_type(product_type):
+    #if pd.isna(product_type):
+        #return 'Other'
+    #product_type = str(product_type).lower().strip()
+    #if any(x in product_type for x in ['mobile', 'phone']):
+        #return 'Mobile Phone'
+    #elif 'laptop' in product_type:
+        #return 'Laptop'
+    #elif 'tablet' in product_type:
+        #return 'Tablet'
+    #elif any(x in product_type for x in ['smartwatch', 'watch']):
+    #    if 'apple' in product_type:
+    #        return 'SmartWatch (Apple)'
+    #    return 'SmartWatch (Android)'
+    #return 'Other'
+
+def categorize_product(product_type):
+    if pd.isna(product_type): 
         return 'Other'
-    product_type = str(product_type).lower().strip()
-    if any(x in product_type for x in ['mobile', 'phone']):
-        return 'Mobile Phone'
-    elif 'laptop' in product_type:
-        return 'Laptop'
-    elif 'tablet' in product_type:
-        return 'Tablet'
-    elif any(x in product_type for x in ['smartwatch', 'watch']):
-        if 'apple' in product_type:
-            return 'SmartWatch (Apple)'
-        return 'SmartWatch (Android)'
+    product_type = str(product_type).lower()
+    if any(x in product_type for x in ['mobile', 'phone']): return 'Mobile Phone'
+    if 'laptop' in product_type: return 'Laptop'
+    if 'tablet' in product_type: return 'Tablet'
+    if any(x in product_type for x in ['watch', 'smartwatch']):
+        return 'SmartWatch (Apple)' if 'apple' in product_type else 'SmartWatch (Android)'
     return 'Other'
 
 def generate_spoc_id(spoc_name, store_name, store_state):
@@ -514,50 +525,110 @@ def process_devices_lost_section(maple_filtered, cashify_filtered, spoc_data, se
         st.plotly_chart(fig, use_container_width=True)
 
 def process_working_day_losses(maple_filtered, cashify_filtered, spoc_data, selected_year, selected_month):
-    st.header("6. Working Day Losses")
+    st.header("6. Working Day vs Weekoff Day Losses")
+
     if selected_month == "All":
-        st.warning("Please select a specific month for working day analysis")
+        st.warning("Please select a specific month for analysis")
         return
-    spoc_weekoffs = process_spoc_weekoffs(spoc_data, selected_year, selected_month)
-    if not spoc_weekoffs:
-        st.info("No working day losses data available (no weekoff data for comparison)")
+
+    # ----- Build week-off calendar (unchanged) -----
+    month_num = {"January": 1, "February": 2, "March": 3, "April": 4,
+                 "May": 5, "June": 6, "July": 7, "August": 8,
+                 "September": 9, "October": 10, "November": 11, "December": 12}
+    first_day = date(selected_year, month_num[selected_month], 1)
+    last_day = (first_day + timedelta(days=40)).replace(day=1) - timedelta(days=1)
+    all_dates = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
+
+    # ----- Build SPOC → week-off dates mapping (only for tagging) -----
+    spoc_weekoffs = {}
+    if 'Weekoff Day' in spoc_data.columns and 'Spoc Name' in spoc_data.columns:
+        for _, row in spoc_data.iterrows():
+            if pd.notna(row.get('Weekoff Day')) and row['Weekoff Day'] != "Vacant":
+                weekoff_dates = [d for d in all_dates if d.strftime('%A') == row['Weekoff Day']]
+                spoc_weekoffs[row['Spoc Name']] = weekoff_dates
+
+    # ----- State selector (filtered by user rights) -----
+    available_states = sorted(
+        set(spoc_data['Store State'].dropna().unique()) |
+        set(cashify_filtered['Store State'].dropna().unique())
+    )
+    if st.session_state.user_regions:
+        available_states = [s for s in available_states if s in st.session_state.user_regions]
+
+    selected_state = st.selectbox("Select State", available_states, key="state_select_weekoff")
+
+    # ----- FILTER CASHIFY ONLY BY STATE + MONTH (no store restriction) -----
+    cashify_data = cashify_filtered[
+        (cashify_filtered['Store State'] == selected_state) &
+        (cashify_filtered['Month'] == selected_month) &
+        (cashify_filtered['Year'] == selected_year)
+    
+    ].copy()
+
+    if cashify_data.empty:
+        st.info(f"No Cashify trade-ins found in **{selected_state}** for **{selected_month} {selected_year}**")
         return
-    spoc_list = list(spoc_weekoffs.keys())
-    selected_spoc = st.selectbox("Select SPOC", spoc_list, key="spoc_working_select")
-    if selected_spoc not in spoc_weekoffs:
-        st.info("No data for selected SPOC")
-        return
-    weekoff_dates = spoc_weekoffs[selected_spoc]
-    spoc_stores = maple_filtered[maple_filtered['Spoc Name'] == selected_spoc]['Store Name'].unique()
-    if not spoc_stores:
-        st.info(f"No stores found for SPOC {selected_spoc}")
-        return
-    store = spoc_stores[0]
+
+    # ----- Add Day Type (Weekoff / Working) using the SPOC week-off map -----
+    all_weekoff_dates = set()
+    for dates in spoc_weekoffs.values():
+        all_weekoff_dates.update(dates)
+
+    cashify_data['Order Date'] = pd.to_datetime(cashify_data['Order Date'], errors='coerce')
+    cashify_data['Day Type'] = cashify_data['Order Date'].dt.date.apply(
+        lambda x: 'Weekoff' if x in all_weekoff_dates else 'Working'
+    )
+    cashify_data['Half'] = cashify_data['Order Date'].dt.day.apply(lambda x: '1st Half' if x <= 15 else '2nd Half')
+
+    # ----- Add SPOC presence flag (optional – just for nice display) -----
+    spoc_stores = set(spoc_data['Store Name'].dropna().unique())
+    cashify_data['SPOC Status'] = cashify_data['Store Name'].apply(
+        lambda x: 'SPOC Available' if x in spoc_stores else 'No SPOC'
+    )
+
+    # ----- Product Category (safe) -----
+    cashify_data['Product Category'] = cashify_data['Product Type'].apply(categorize_product)
+
+    # ----- Visualisations -----
+    st.subheader(f"Trade-in Summary – {selected_state} ({selected_month} {selected_year})")
+    pie_data = cashify_data.groupby(['Day Type', 'SPOC Status']).size().reset_index(name='Count')
+    if not pie_data.empty:
+        fig_pie = px.pie(pie_data, names='Day Type', values='Count',
+                          facet_col='SPOC Status', color_discrete_sequence=px.colors.qualitative.Bold)
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    cat_data = cashify_data.groupby(['Product Category', 'Day Type', 'Half']).size().reset_index(name='Count')
+    if not cat_data.empty:
+        fig_bar = px.bar(cat_data, x='Product Category', y='Count', color='Day Type',
+                         facet_col='Half', barmode='group',
+                         title="Device Losses by Category & Half-Month")
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    # ----- Downloadable tables -----
+    st.download_button(
+        "Download Weekoff vs Working Day Report",
+        data=cashify_data.to_csv(index=False).encode(),
+        file_name=f"weekoff_working_{selected_state}_{selected_month}_{selected_year}.csv",
+        mime="text/csv"
+    )
+def get_weeks_in_month(year, month_name):
     month_num = {"January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6,
                  "July": 7, "August": 8, "September": 9, "October": 10, "November": 11, "December": 12}
-    first_day = date(selected_year, month_num[selected_month], 1)
-    last_day = (first_day + timedelta(days=31)).replace(day=1) - timedelta(days=1)
-    all_dates = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
-    working_dates = [d for d in all_dates if d not in weekoff_dates]
-    cashify_losses = cashify_filtered[
-        (cashify_filtered['Store Name'] == store) &
-        (cashify_filtered['Order Date'].dt.date.isin(working_dates))
-    ]
-    if cashify_losses.empty:
-        st.info(f"No working day losses for {selected_spoc} at {store}")
-        return
-    losses_by_category = cashify_losses.groupby('Product Category').size().reset_index(name='Count')
-    st.write(f"**Working day losses for {selected_spoc} at {store}:**")
-    st.dataframe(losses_by_category)
-    if not losses_by_category.empty:
-        fig = px.bar(
-            losses_by_category,
-            x='Product Category',
-            y='Count',
-            text='Count',
-            title=f"Working Day Losses for {selected_spoc}"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    month = month_num[month_name]
+    first_day = date(year, month, 1)
+    # Correct last day of month
+    next_month = month + 1 if month < 12 else 1
+    next_year = year if month < 12 else year + 1
+    last_day = date(next_year, next_month, 1) - timedelta(days=1)
+    weeks = []
+    current = first_day
+    week_num = 1
+    while current <= last_day:
+        week_end = min(current + timedelta(days=6), last_day)
+        weeks.append((f"Week {week_num}", current, week_end))
+        current = week_end + timedelta(days=1)
+        week_num += 1
+    return weeks
 
 def process_tradein_losses(cashify_filtered, selected_year, selected_month):
     st.header("7. Trade-ins Lost to Cashify by State")
@@ -576,7 +647,7 @@ def process_tradein_losses(cashify_filtered, selected_year, selected_month):
     if tradein_losses.empty:
         st.info("No trade-in losses data available for selected period")
         return
-    tradein_losses['Product Category'] = tradein_losses['Product Type'].apply(categorize_product_type)
+    tradein_losses['Product Category'] = tradein_losses['Product Type'].apply(categorize_product)
     losses_by_state = tradein_losses.groupby('Store State').size().reset_index(name='Count')
     if not losses_by_state.empty:
         st.subheader("Trade-in Losses by State")
@@ -619,9 +690,15 @@ def process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, 
     if selected_month == "All":
         st.warning("Please select a specific month for pricing comparison")
         return
+
+    # FIX: Convert to numeric first
+    cashify_filtered['Initial Device Amount'] = pd.to_numeric(cashify_filtered['Initial Device Amount'], errors='coerce').fillna(0)
+    maple_filtered['Maple Bid'] = pd.to_numeric(maple_filtered['Maple Bid'], errors='coerce').fillna(0)
+
     south_states = ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry']
     cashify_filtered = standardize_state_names(cashify_filtered)
     maple_filtered = standardize_state_names(maple_filtered)
+
     cashify_prices = cashify_filtered[
         (cashify_filtered['Store State'].isin(south_states)) &
         (cashify_filtered['Month'] == selected_month) &
@@ -632,47 +709,32 @@ def process_pricing_comparison(maple_filtered, cashify_filtered, selected_year, 
         (maple_filtered['Month'] == selected_month) &
         (maple_filtered['Year'] == selected_year)
     ]
+
     if cashify_prices.empty or maple_prices.empty:
         st.warning("Insufficient data for pricing comparison")
         return
-    cashify_prices['Product Category'] = cashify_prices['Product Type'].apply(categorize_product_type)
-    maple_prices['Product Category'] = maple_prices['Product Type'].apply(categorize_product_type)
-    valid_categories = ['Mobile Phone', 'Laptop', 'Tablet', 'SmartWatch (Apple)', 'SmartWatch (Android)']
-    cashify_prices = cashify_prices[cashify_prices['Product Category'].isin(valid_categories)]
-    maple_prices = maple_prices[maple_prices['Product Category'].isin(valid_categories)]
-    if cashify_prices.empty or maple_prices.empty:
-        st.warning("No valid product categories for pricing comparison")
-        return
+
+    cashify_prices['Product Category'] = cashify_prices['Product Type'].apply(categorize_product)
+    maple_prices['Product Category'] = maple_prices['Product Type'].apply(categorize_product)
+
     cashify_avg = cashify_prices.groupby('Product Category')['Initial Device Amount'].mean().reset_index()
     maple_avg = maple_prices.groupby('Product Category')['Maple Bid'].mean().reset_index()
-    pricing_comparison = pd.merge(
-        cashify_avg,
-        maple_avg,
-        on='Product Category',
-        how='outer'
-    ).fillna(0)
+
+    pricing_comparison = pd.merge(cashify_avg, maple_avg, on='Product Category', how='outer').fillna(0)
     pricing_comparison['Price Difference'] = pricing_comparison['Initial Device Amount'] - pricing_comparison['Maple Bid']
-    pricing_comparison['Price Difference %'] = (pricing_comparison['Price Difference'] / pricing_comparison['Maple Bid']) * 100
+    pricing_comparison['Price Difference %'] = (pricing_comparison['Price Difference'] / pricing_comparison['Maple Bid'].replace(0, np.nan)) * 100
     pricing_comparison = pricing_comparison.round(2)
-    pricing_comparison.columns = [
-        'Product Category', 
-        'Avg Cashify Price (₹)', 
-        'Avg Maple Price (₹)', 
-        'Price Difference (₹)', 
-        'Price Difference (%)'
-    ]
+
+    pricing_comparison.columns = ['Product Category', 'Avg Cashify Price (₹)', 'Avg Maple Price (₹)', 'Price Difference (₹)', 'Price Difference (%)']
+
     st.write(f"**Pricing Comparison for {selected_month} {selected_year}**")
     st.dataframe(pricing_comparison)
+
     fig = px.bar(
-        pricing_comparison.melt(id_vars=['Product Category'], 
-                              value_vars=['Avg Cashify Price (₹)', 'Avg Maple Price (₹)']),
-        x='Product Category',
-        y='value',
-        color='variable',
-        barmode='group',
-        text='value',
-        title=f"Average Pricing Comparison ({selected_month} {selected_year})",
-        labels={'value': 'Price (₹)', 'variable': 'Price Source'}
+        pricing_comparison.melt(id_vars=['Product Category'],
+                            value_vars=['Avg Cashify Price (₹)', 'Avg Maple Price (₹)']),
+        x='Product Category', y='value', color='variable', barmode='group',
+        title=f"Avg Pricing ({selected_month} {selected_year})"
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -728,8 +790,8 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         st.warning("No data available after applying filters. Please check your data or adjust the filters.")
         st.stop()
 
-    maple_filtered['Product Category'] = maple_filtered['Product Type'].apply(categorize_product_type)
-    cashify_filtered['Product Category'] = cashify_filtered['Product Type'].apply(categorize_product_type)
+    maple_filtered['Product Category'] = maple_filtered['Product Type'].apply(categorize_product)
+    cashify_filtered['Product Category'] = cashify_filtered['Product Type'].apply(categorize_product)
 
     # 1. Average Devices Acquired
     st.header("1. Average Devices Acquired")
@@ -1381,7 +1443,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
 
         # Derive category if needed
         if "Product Category" not in maple_filtered.columns or maple_filtered["Product Category"].isna().all():
-            maple_filtered["Product Category"] = maple_filtered["Product Type"].apply(categorize_product_type)
+            maple_filtered["Product Category"] = maple_filtered["Product Type"].apply(categorize_product)
         else:
             maple_filtered["Product Category"] = maple_filtered["Product Category"].astype(str).str.title()
 
@@ -1820,132 +1882,79 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
             
     # Section 5: Detailed Pricing Comparison
     st.header("5. Pricing Comparison for Lost Devices")
-
     if selected_month == "All":
-        st.warning("Please select a specific month for pricing comparison")
+        st.warning("Please select a specific month")
     else:
-        # Ensure Product Category is defined
-        if 'Product Category' not in cashify_filtered.columns and 'Product Type' in cashify_filtered.columns:
-            categories = {'Mobile Phone': 'Mobile Phone', 'Tablet': 'Tablet', 'Laptop': 'Laptop', 'Smartwatch': 'Smartwatch'}
-            cashify_filtered['Product Category'] = cashify_filtered['Product Type'].map(categories).fillna('Unknown')
-        if 'Product Category' not in maple_filtered.columns and 'Product Type' in maple_filtered.columns:
-            categories = {'Mobile Phone': 'Mobile Phone', 'Tablet': 'Tablet', 'Laptop': 'Laptop', 'Smartwatch': 'Smartwatch'}
-            maple_filtered['Product Category'] = maple_filtered['Product Type'].map(categories).fillna('Unknown')
+        # Force numeric prices
+        cashify_filtered['Initial Device Amount'] = pd.to_numeric(cashify_filtered['Initial Device Amount'], errors='coerce').fillna(0)
+        maple_filtered['Maple Bid'] = pd.to_numeric(maple_filtered['Maple Bid'], errors='coerce').fillna(0)
 
-        # Get common devices between Maple and Cashify
-        common_devices = set(cashify_filtered['Old Device Name'].unique()) & set(maple_filtered['Old Product Name'].unique())
+        cashify_filtered['Old Device Name'] = cashify_filtered['Old Device Name'].astype(str).str.strip()
+        maple_filtered['Old Product Name']   = maple_filtered['Old Product Name'].astype(str).str.strip()
+
+        common_devices = set(cashify_filtered['Old Device Name']) & set(maple_filtered['Old Product Name'])
 
         if not common_devices:
-            st.warning("No common devices found between Maple and Cashify data")
+            st.info("No common device names between Maple ↔ Cashify")
         else:
-            # Prepare Cashify data
-            cashify_prices = cashify_filtered[
-            (cashify_filtered['Month'] == selected_month) &
-            (cashify_filtered['Year'] == selected_year) &
-            (cashify_filtered['Old Device Name'].isin(common_devices))
+            cf = cashify_filtered[
+                (cashify_filtered['Month'] == selected_month) &
+                (cashify_filtered['Year']  == selected_year) &
+                (cashify_filtered['Old Device Name'].isin(common_devices))
             ].copy()
 
-            # Prepare Maple data
-            maple_prices = maple_filtered[
-            (maple_filtered['Month'] == selected_month) &
-            (maple_filtered['Year'] == selected_year) &
-            (maple_filtered['Old Product Name'].isin(common_devices))
+            mf = maple_filtered[
+                (maple_filtered['Month'] == selected_month) &
+                (maple_filtered['Year']  == selected_year) &
+                (maple_filtered['Old Product Name'].isin(common_devices))
             ].copy()
 
-            if cashify_prices.empty or maple_prices.empty:
-                st.warning("Insufficient data for pricing comparison")
+            if cf.empty or mf.empty:
+                st.info("No records for the selected month")
             else:
-                # Merge data for comparison
-                comparison_df = pd.merge(
-                cashify_prices[['Store Name', 'Spoc Name', 'Product Category', 'Product Type', 
-                                'Old Device Name', 'Initial Device Amount']],
-                maple_prices[['Store Name', 'Old Product Name', 'Maple Bid']],
-                left_on=['Store Name', 'Old Device Name'],
-                right_on=['Store Name', 'Old Product Name'],
-                how='inner'
+                comp = pd.merge(
+                    cf[['Store Name','Old Device Name','Initial Device Amount','Product Category']],
+                    mf[['Store Name','Old Product Name','Maple Bid']],
+                    left_on=['Store Name','Old Device Name'],
+                    right_on=['Store Name','Old Product Name'],
+                    how='inner'
                 )
 
-            # Calculate price difference
-            comparison_df['Price Difference'] = comparison_df['Initial Device Amount'] - comparison_df['Maple Bid']
-            comparison_df['Price Difference %'] = (comparison_df['Price Difference'] / comparison_df['Maple Bid']) * 100
+                if comp.empty:
+                    st.info("No exact store+device matches")
+                else:
+                    comp['Price Difference'] = comp['Initial Device Amount'] - comp['Maple Bid']
+                    comp['Price Difference %'] = np.where(
+                        comp['Maple Bid'] != 0,
+                        (comp['Price Difference'] / comp['Maple Bid']) * 100,
+                        0
+                    )
 
-            # Clean up column names
-            comparison_df = comparison_df.rename(columns={
-                'Old Device Name': 'Device Name',
-                'Old Product Name': 'Device Name (Maple)'
-            }).drop(columns=['Device Name (Maple)'])
+                    comp = comp.rename(columns={'Old Device Name': 'Device Name'}).drop(columns=['Old Product Name'], errors='ignore')
 
-            if not comparison_df.empty:
-                # Show summary statistics
-                st.subheader("Pricing Comparison Summary")
-                st.write(f"Total compared devices: {len(comparison_df)}")
-                st.write(f"Average Cashify price: ₹{comparison_df['Initial Device Amount'].mean():.2f}")
-                st.write(f"Average Maple price: ₹{comparison_df['Maple Bid'].mean():.2f}")
-                st.write(f"Average price difference: ₹{comparison_df['Price Difference'].mean():.2f}")
+                    st.write(f"**Matched devices:** {len(comp):,}")
+                    st.dataframe(
+                        comp.sort_values('Price Difference', ascending=False),
+                        column_config={
+                            "Initial Device Amount": st.column_config.NumberColumn("Cashify", format="₹%,.0f"),
+                            "Maple Bid":          st.column_config.NumberColumn("Maple",   format="₹%,.0f"),
+                            "Price Difference":    st.column_config.NumberColumn("Lost ₹",  format="₹%,.0f"),
+                        },
+                        use_container_width=True
+                    )
 
-                # Interactive data table
-                st.subheader("Detailed Pricing Comparison")
-                st.dataframe(
-                    comparison_df.sort_values('Price Difference', ascending=False),
-                    column_config={
-                        "Product Category": st.column_config.TextColumn("Device Category", width="medium"),
-                        "Initial Device Amount": st.column_config.NumberColumn("Cashify Price", format="₹%.2f"),
-                        "Maple Bid": st.column_config.NumberColumn("Maple Price", format="₹%.2f"),
-                        "Price Difference": st.column_config.NumberColumn("Price Difference", format="₹%.2f"),
-                        "Price Difference %": st.column_config.NumberColumn("Price Difference %", format="%.2f%%")
-                    }
-                )
+                    # Charts
+                    fig1 = px.box(comp, x='Product Category', y='Price Difference', color='Product Category', points="all")
+                    st.plotly_chart(fig1, use_container_width=True)
 
-                # Visualization: Box plot by Product Category
-                fig_category = px.box(
-                    comparison_df,
-                    x='Product Category',
-                    y='Price Difference',
-                    title=f"Price Differences by Device Category ({selected_month} {selected_year})",
-                    points="all",
-                    hover_data=['Device Name', 'Store Name'],
-                    color='Product Category',
-                    color_discrete_sequence=px.colors.qualitative.Bold
-                )
-                fig_category.update_layout(
-                    xaxis_tickangle=45,
-                    xaxis_title="Device Category",
-                    yaxis_title="Price Difference (₹)",
-                    font=dict(size=14),
-                    xaxis=dict(tickfont=dict(size=12))
-                )
-                st.plotly_chart(fig_category, use_container_width=True)
+                    top20 = comp.nlargest(20, 'Price Difference')
+                    fig2 = px.bar(top20, x='Device Name', y='Price Difference', color='Product Category',
+                                  text='Price Difference', title="Top 20 Lost Devices")
+                    fig2.update_traces(texttemplate='₹%{text:,.0f}')
+                    st.plotly_chart(fig2, use_container_width=True)
 
-                # Visualization: Top devices with largest price differences
-                top_devices = comparison_df.nlargest(20, 'Price Difference')
-                fig_devices = px.bar(
-                    top_devices,
-                    x='Device Name',
-                    y='Price Difference',
-                    color='Product Category',
-                    title=f"Top Devices with Largest Price Differences ({selected_month} {selected_year})",
-                    hover_data=['Initial Device Amount', 'Maple Bid'],
-                    height=600,
-                    color_discrete_sequence=px.colors.qualitative.Bold
-                )
-                fig_devices.update_layout(
-                    xaxis_tickangle=45,
-                    legend_title="Device Category",
-                    yaxis_title="Price Difference (₹)",
-                    font=dict(size=14),
-                    legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="white", bordercolor="Black", borderwidth=1)
-                )
-                st.plotly_chart(fig_devices, use_container_width=True)
-
-                # Download button
-                st.download_button(
-                    label="Download Pricing Comparison Data",
-                    data=comparison_df.to_csv(index=False).encode('utf-8'),
-                    file_name=f"pricing_comparison_{selected_month}_{selected_year}.csv",
-                    mime="text/csv"
-                )
-            else:
-                st.warning("No comparable devices found for pricing analysis")
+                    st.download_button("Download CSV", comp.to_csv(index=False).encode(),
+                                      file_name=f"pricing_{selected_month}_{selected_year}.csv")
 
     # Section 6: Working Day vs Weekoff Day Losses
     st.header("6. Working Day vs Weekoff Day Losses")
@@ -2503,6 +2512,289 @@ def advanced_analytics(maple_df, cashify_df, spoc_df):
         st.subheader("Stores where Cashify Outperforms Maple")
         st.dataframe(store_perf_df[store_perf_df['Cashify Count'] > store_perf_df['Maple Count']].sort_values('Cashify Count', ascending=False))
 
+def comparative_analysis(maple_df, spoc_df):
+    st.header("Comparative Analysis - Weekly Target Achievement")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        selected_year = st.selectbox("Year", sorted(maple_df['Year'].unique(), reverse=True), key="comp_year")
+    with col2:
+        selected_month = st.selectbox("Month", sorted(maple_df[maple_df['Year'] == selected_year]['Month'].unique()), key="comp_month")
+
+    selected_rm = st.selectbox("Regional Manager", ["All", "Sandeep Selvamani", "Manoj Kanagaraja", "Mahendra Tomar"], key="comp_rm")
+
+    filtered_maple = maple_df[(maple_df['Year'] == selected_year) & (maple_df['Month'] == selected_month)].copy()
+    filtered_spoc = spoc_df.copy()
+
+    if selected_rm != "All":
+        states = RM_STATES[selected_rm]
+        filtered_maple = filtered_maple[filtered_maple['Store State'].isin(states)]
+        filtered_spoc = filtered_spoc[filtered_spoc['Store State'].isin(states)]
+
+    weeks = get_weeks_in_month(selected_year, selected_month)[:5]  # Always 5 weeks
+    week_cols = [w[0] for w in weeks]
+    filtered_maple['Created Date'] = pd.to_datetime(filtered_maple['Created Date'])
+
+    # === Regional Manager Wise ===
+    rm_rows = []
+    rm_group_map = {"Mahendra Tomar": "Maharashtra", "Sandeep Selvamani": "KN, TS & AP", "Manoj Kanagaraja": "KL, TN & PC"}
+    for rm, states in RM_STATES.items():
+        if selected_rm != "All" and rm != selected_rm: continue
+        group_name = rm_group_map.get(rm, rm)
+        rm_spoc = filtered_spoc[filtered_spoc['Store State'].isin(states)]
+        month_col = f"{selected_month} Target"
+        if month_col not in rm_spoc.columns or rm_spoc.empty: continue
+
+        monthly_target = rm_spoc[month_col].sum()
+        target_weekly = int(round(monthly_target / 5))
+        daily_avg = int(round(target_weekly / 7))
+
+        week_ach = {w[0]: 0 for w in weeks}
+        total_ach = 0
+        for week_name, start, end in weeks:
+            ach = len(filtered_maple[(filtered_maple['Store State'].isin(states)) &
+                                     (filtered_maple['Created Date'].dt.date >= start) &
+                                     (filtered_maple['Created Date'].dt.date <= end)])
+            week_ach[week_name] = ach
+            total_ach += ach
+
+        rm_rows += [
+            {"Group": group_name, "Metric": "Target Weekly", **{w[0]: target_weekly for w in weeks}, "Overall Target": int(monthly_target)},
+            {"Group": "", "Metric": "Daily Avg. for Target achievement", **{w[0]: daily_avg for w in weeks}, "Overall Target": daily_avg},
+            {"Group": "", "Metric": "Achievement", **week_ach, "Overall Target": int(total_ach)},
+            {"Group": "", "Metric": "Achievement % Against Weekly Target", **{w[0]: f"{round(week_ach[w[0]]/target_weekly*100,1)}%" if target_weekly else "0%" for w in weeks}, "Overall Target": f"{round(total_ach/monthly_target*100,1)}%" if monthly_target else "0%"}
+        ]
+
+    if rm_rows:
+        rm_df = pd.DataFrame(rm_rows)
+        cols = ["Group", "Metric"] + week_cols + ["Overall Target"]
+        rm_display = rm_df[cols].fillna("")
+
+        st.subheader("Regional Manager wise")
+        def color_pct(val):
+            if isinstance(val, str) and "%" in val:
+                pct = float(val.strip('%'))
+                return 'color: red' if pct < 70 else 'color: green'
+            return ''
+
+        numeric_cols = rm_display.select_dtypes(include=['number']).columns
+        st.dataframe(rm_display.style.format("{:.0f}", subset=numeric_cols).applymap(color_pct, subset=week_cols + ["Overall Target"]), 
+                     use_container_width=True, hide_index=True)
+
+        # Bar Chart: Weeks on X, Target / Achievement / Achieved % on Y
+        bar_data = []
+        for r in rm_rows:
+            if r["Metric"] == "Target Weekly":
+                for w in week_cols:
+                    bar_data.append({"Group": group_name, "Week": w, "Metric": "Target Weekly", "Value": r[w]})
+            if r["Metric"] == "Achievement":
+                for w in week_cols:
+                    bar_data.append({"Group": group_name, "Week": w, "Metric": "Achievement", "Value": r[w]})
+            if r["Metric"] == "Achievement % Against Weekly Target":
+                for w in week_cols:
+                    pct = float(r[w].strip('%'))
+                    bar_data.append({"Group": group_name, "Week": w, "Metric": "Achieved %", "Value": pct})
+        if bar_data:
+            bar_df = pd.DataFrame(bar_data)
+            fig_bar = px.bar(bar_df, x="Week", y="Value", color="Metric", barmode="group",
+                             title="Weekly Target / Achievement / Achieved % (Regional Manager)", text_auto=True)
+            fig_bar.update_traces(textposition="auto")
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+    # === State Wise ===
+    state_rows = []
+    states_order = ["Andhra Pradesh", "Telangana", "Karnataka", "Puducherry", "Tamil Nadu", "Kerala", "Maharashtra"]
+    for state in states_order:
+        if selected_rm != "All" and state not in RM_STATES.get(selected_rm, []): continue
+        state_spoc = filtered_spoc[filtered_spoc['Store State'] == state]
+        month_col = f"{selected_month} Target"
+        if month_col not in state_spoc.columns or state_spoc.empty: continue
+
+        monthly_target = state_spoc[month_col].sum()
+        target_weekly = int(round(monthly_target / 5))
+        daily_avg = int(round(target_weekly / 7))
+
+        week_ach = {w[0]: 0 for w in weeks}
+        total_ach = 0
+        for week_name, start, end in weeks:
+            ach = len(filtered_maple[(filtered_maple['Store State'] == state) &
+                                     (filtered_maple['Created Date'].dt.date >= start) &
+                                     (filtered_maple['Created Date'].dt.date <= end)])
+            week_ach[week_name] = ach
+            total_ach += ach
+
+        state_rows += [
+            {"State": state, "Metric": "Target Weekly", **{w[0]: target_weekly for w in weeks}, "Overall Target": int(monthly_target)},
+            {"State": "", "Metric": "Daily Avg. for Target achievement", **{w[0]: daily_avg for w in weeks}, "Overall Target": daily_avg},
+            {"State": "", "Metric": "Achievement", **week_ach, "Overall Target": int(total_ach)},
+            {"State": "", "Metric": "Achievement % Against Weekly Target", **{w[0]: f"{round(week_ach[w[0]]/target_weekly*100,1)}%" if target_weekly else "0%" for w in weeks}, "Overall Target": f"{round(total_ach/monthly_target*100,1)}%" if monthly_target else "0%"}
+        ]
+
+    if state_rows:
+        state_df = pd.DataFrame(state_rows)
+        cols = ["State", "Metric"] + week_cols + ["Overall Target"]
+        state_display = state_df[cols].fillna("")
+
+        st.subheader("State wise")
+        def color_pct(val):
+            if isinstance(val, str) and "%" in val:
+                pct = float(val.strip('%'))
+                return 'color: red' if pct < 70 else 'color: green'
+            return ''
+
+        numeric_cols = state_display.select_dtypes(include=['number']).columns
+        st.dataframe(state_display.style.format("{:.0f}", subset=numeric_cols).applymap(color_pct, subset=week_cols + ["Overall Target"]), 
+                     use_container_width=True, hide_index=True)
+
+        # Bar Chart: Weeks on X, Target / Achievement / Achieved % on Y
+        bar_data = []
+        for r in state_rows:
+            if r["Metric"] == "Target Weekly":
+                for w in week_cols:
+                    bar_data.append({"State": state, "Week": w, "Metric": "Target Weekly", "Value": r[w]})
+            if r["Metric"] == "Achievement":
+                for w in week_cols:
+                    bar_data.append({"State": state, "Week": w, "Metric": "Achievement", "Value": r[w]})
+            if r["Metric"] == "Achievement % Against Weekly Target":
+                for w in week_cols:
+                    pct = float(r[w].strip('%'))
+                    bar_data.append({"State": state, "Week": w, "Metric": "Achieved %", "Value": pct})
+        if bar_data:
+            bar_df = pd.DataFrame(bar_data)
+            fig_bar = px.bar(bar_df, x="Week", y="Value", color="Metric", barmode="group",
+                             title="Weekly Target / Achievement / Achieved % (State)", text_auto=True)
+            fig_bar.update_traces(textposition="auto")
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+    # === Store Wise ===
+    if selected_rm != "All":
+        st.subheader(f"Store wise - {selected_rm}")
+
+        # State filter for Store wise
+        available_states = sorted(filtered_spoc['Store State'].unique())
+        selected_state = st.selectbox("Select State for Store Analysis", ["All"] + available_states, key="store_state_filter")
+
+        filtered_stores = filtered_spoc.copy()
+        if selected_state != "All":
+            filtered_stores = filtered_stores[filtered_stores['Store State'] == selected_state]
+
+        store_rows = []
+        for _, row in filtered_stores.iterrows():
+            store = row['Store Name']
+            state = row['Store State']
+            spoc_name = row.get('Spoc Name', 'Unknown')
+            monthly_target = row.get(f"{selected_month} Target", 0)
+            target_weekly = int(round(monthly_target / 5))
+            daily_avg = int(round(target_weekly / 7))
+
+            week_ach = {w[0]: 0 for w in weeks}
+            total_ach = 0
+            for week_name, start, end in weeks:
+                ach = len(filtered_maple[(filtered_maple['Store Name'] == store) &
+                                         (filtered_maple['Created Date'].dt.date >= start) &
+                                         (filtered_maple['Created Date'].dt.date <= end)])
+                week_ach[week_name] = ach
+                total_ach += ach
+
+            store_rows += [
+                {"State": state, "Store": store, "SPOC": spoc_name, "Metric": "Target Weekly", **{w[0]: target_weekly for w in weeks}, "Overall Target": int(monthly_target)},
+                {"State": "", "Store": "", "SPOC": "", "Metric": "Daily Avg. for Target achievement", **{w[0]: daily_avg for w in weeks}, "Overall Target": daily_avg},
+                {"State": "", "Store": "", "SPOC": "", "Metric": "Achievement", **week_ach, "Overall Target": int(total_ach)},
+                {"State": "", "Store": "", "SPOC": "", "Metric": "Achievement % Against Weekly Target", **{w[0]: f"{round(week_ach[w[0]]/target_weekly*100,1)}%" if target_weekly else "0%" for w in weeks}, "Overall Target": f"{round(total_ach/monthly_target*100,1)}%" if monthly_target else "0%"}
+            ]
+
+        if store_rows:
+            store_df = pd.DataFrame(store_rows)
+            cols = ["State", "Store", "SPOC", "Metric"] + week_cols + ["Overall Target"]
+            store_display = store_df[cols].fillna("")
+            numeric_cols = store_display.select_dtypes(include=['number']).columns
+
+            def color_pct(val):
+                if isinstance(val, str) and "%" in val:
+                    pct = float(val.strip('%'))
+                    return 'color: red' if pct < 70 else 'color: green'
+                return ''
+
+            st.dataframe(store_display.style.format("{:.0f}", subset=numeric_cols).applymap(color_pct, subset=week_cols + ["Overall Target"]), 
+                         use_container_width=True, hide_index=True)
+
+    # === Trend Analysis over Months ===
+    st.subheader("Monthly Trend Analysis (Last 6 Months)")
+    monthly_trend = []
+    current_month = datetime.strptime(selected_month, '%B').month
+    current_year = selected_year
+    for i in range(6):
+        month_num = current_month - i
+        year = current_year if month_num > 0 else current_year - 1
+        month_num = month_num if month_num > 0 else month_num + 12
+        month_name = calendar.month_name[month_num]
+        month_data = maple_df[(maple_df['Month'] == month_name) & (maple_df['Year'] == year)]
+        ach = len(month_data)
+        monthly_trend.append({"Month": month_name, "Achievement": ach})
+
+    if monthly_trend:
+        trend_df = pd.DataFrame(monthly_trend)
+        fig_trend = px.line(trend_df, x="Month", y="Achievement", markers=True,
+                            title="Monthly Achievement Trend (Last 6 Months)", text="Achievement")
+        fig_trend.update_traces(textposition="top center")
+        st.plotly_chart(fig_trend, use_container_width=True)
+
+    # === SPOC Performance Ranking ===
+    st.subheader("SPOC Performance Ranking")
+    spoc_ranking = []
+    for _, row in filtered_spoc.iterrows():
+        spoc_name = row.get('Spoc Name', 'Unknown')
+        store = row['Store Name']
+        state = row['Store State']
+        monthly_target = row.get(f"{selected_month} Target", 0)
+        achievement = len(filtered_maple[filtered_maple['Spoc Name'] == spoc_name]) if 'Spoc Name' in filtered_maple.columns else 0
+        ach_pct = round(achievement / monthly_target * 100, 1) if monthly_target else 0
+        spoc_ranking.append({
+            "SPOC Name": spoc_name,
+            "Store": store,
+            "State": state,
+            "Target": int(monthly_target),
+            "Achievement": achievement,
+            "Achievement %": ach_pct
+        })
+
+    if spoc_ranking:
+        spoc_df_rank = pd.DataFrame(spoc_ranking)
+        spoc_df_rank = spoc_df_rank.sort_values("Achievement %", ascending=False).reset_index(drop=True)
+
+        def color_spoc_pct(val):
+            if isinstance(val, (int, float)):
+                return 'color: red' if val < 70 else 'color: green'
+            return ''
+
+        st.dataframe(spoc_df_rank.style
+                     .format("{:.0f}", subset=["Target", "Achievement"])
+                     .format("{:.1f}", subset=["Achievement %"])
+                     .applymap(color_spoc_pct, subset=["Achievement %"]), 
+                     use_container_width=True, hide_index=True)
+
+        # Bar Chart for SPOC Ranking
+        fig_spoc = px.bar(spoc_df_rank.head(10), x="SPOC Name", y="Achievement %", color="Achievement %",
+                          title="Top 10 SPOC Performance Ranking (Achievement %)", text_auto=True)
+        fig_spoc.update_traces(textposition="auto")
+        fig_spoc.update_layout(xaxis_tickangle=45)
+        st.plotly_chart(fig_spoc, use_container_width=True)
+
+    # === Excel Download ===
+    all_rows = rm_rows + state_rows + (store_rows if selected_rm != "All" else [])
+    if all_rows:
+        download_df = pd.DataFrame(all_rows).fillna("")
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            download_df.to_excel(writer, sheet_name='Weekly_Report', index=False)
+        buffer.seek(0)
+        st.download_button(
+            label="Download Weekly Report as Excel",
+            data=buffer.getvalue(),
+            file_name=f"Weekly_Report_{selected_month}_{selected_year}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
 def main():
     if not st.session_state.get('authenticated', False):
         login()
@@ -2568,12 +2860,14 @@ def main():
         maple_df = pd.merge(maple_df, spoc_df[['Spoc Name', 'Store Name', 'Store State', 'SPOC_ID']].drop_duplicates(), on=['Spoc Name', 'Store Name', 'Store State'], how='left')
 
     # Page selection
-    page = st.sidebar.radio("Go to", ["Base Analysis", "Advanced Analytics"])
+    page = st.sidebar.radio("Go to", ["Base Analysis", "Advanced Analytics","Comparative Analysis"])
 
     if page == "Base Analysis":
         base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df)
     elif page == "Advanced Analytics":
         advanced_analytics(maple_df, cashify_df, spoc_df)
+    elif page == "Comparative Analysis":
+        comparative_analysis(maple_df, spoc_df)
 
 if __name__ == "__main__":
     main()
