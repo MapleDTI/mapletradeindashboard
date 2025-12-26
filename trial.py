@@ -359,23 +359,26 @@ def get_weeks_in_month(year, month):
     return weeks
 
 def get_last_n_months(current_month, current_year, n=3):
-    month_num = {
-        "January": 1, "February": 2, "March": 3, "April": 4, 
-        "May": 5, "June": 6, "July": 7, "August": 8, 
-        "September": 9, "October": 10, "November": 11, "December": 12
-    }
     if current_month == "All":
         current_month = datetime.now().strftime("%B")
-    if current_month not in month_num:
-        raise ValueError(f"Invalid month: {current_month}. Must be one of {list(month_num.keys())}")
-    reverse_month = {v: k for k, v in month_num.items()}
-    current_month_num = month_num[current_month]
+    
+    try:
+        current_month_num = list(calendar.month_name).index(current_month)
+    except ValueError:
+        raise ValueError(f"Invalid month: {current_month}")
+    
     months = []
     for i in range(n):
-        month = (current_month_num - i) % 12 or 12
-        year_adjust = current_year - ((current_month_num - i) // 12)
-        months.append((reverse_month[month], year_adjust))
-    return sorted(months, key=lambda x: (x[1], month_num[x[0]]))
+        target_num = current_month_num - i
+        year = current_year
+        if target_num <= 0:
+            target_num += 12
+            year -= 1
+        month_name = calendar.month_name[target_num]
+        months.append((month_name, year))
+    
+    # Return oldest first, then reverse if needed for display
+    return months[::-1]
 
 def get_last_n_weeks(selected_month, selected_year, spoc, n=4):
     month_num = {"January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6,
