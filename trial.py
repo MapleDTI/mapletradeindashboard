@@ -2101,7 +2101,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
                     ).size().reset_index(name='Devices Lost')
 
                     buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                         half_summary.to_excel(writer, sheet_name='1st_2nd_Half', index=False)
                         mtd_summary.to_excel(writer, sheet_name='MTD_Summary', index=False)
                         loss_summary_sheet.to_excel(writer, sheet_name='Detailed_by_SPOC', index=False)
@@ -2174,7 +2174,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
                         st.dataframe(final_loss_summary)
 
                         final_buffer = io.BytesIO()
-                        with pd.ExcelWriter(final_buffer, engine='xlsxwriter') as writer:
+                        with pd.ExcelWriter(final_buffer, engine='openpyxl') as writer:
                             final_loss_summary.to_excel(writer, sheet_name='Device_Loss_All_States', index=False)
 
                         final_buffer.seek(0)
