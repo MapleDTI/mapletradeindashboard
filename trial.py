@@ -1203,10 +1203,12 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
     st.header("2.4 State-wise Device Counts and Top Performer SPOCs")
     south_states = ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry']
     user_south_states = [s for s in south_states if s in (st.session_state.user_regions or south_states)]
+
     if 'Store State' in maple_filtered.columns and 'Store State' in cashify_filtered.columns:
         st.write("**Device Counts per State (South Zone)**")
         maple_state_counts = maple_filtered[maple_filtered['Store State'].isin(user_south_states)].groupby('Store State').size().reset_index(name='Maple Device Count')
         cashify_state_counts = cashify_filtered[cashify_filtered['Store State'].isin(user_south_states)].groupby('Store State').size().reset_index(name='Cashify Device Count')
+    
         state_counts = pd.merge(maple_state_counts, cashify_state_counts, on='Store State', how='outer').fillna(0)
         state_counts_melted = pd.melt(
             state_counts,
@@ -1215,6 +1217,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
             var_name='Source',
             value_name='Device Count'
         )
+
         if not state_counts_melted.empty:
             fig_state = px.bar(
                 state_counts_melted,
@@ -1229,6 +1232,139 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
             fig_state.update_traces(texttemplate='%{text:.0f}', textposition='auto')
             fig_state.update_layout(showlegend=True)
             st.plotly_chart(fig_state, use_container_width=True)
+
+    # ── Detailed Device Loss Table (Cashify side) ────────────────────────────────
+    st.markdown("### 🔍 Detailed Cashify Device Losses (by Store / SPOC / Category)")
+
+    spoc_master = st.session_state.spoc_data
+
+    if spoc_master is None or spoc_master.empty:
+        st.warning("SPOC Master data not available — detailed loss table skipped.")
+    else:
+        # ── Column name detective work ───────────────────────────────────────
+        possible_store_cols = ['Store Name', 'store_name', 'Store', 'Shop Name', 'Branch Name', 'Outlet']
+        possible_state_cols = ['Store State', 'State', 'store_state', 'State Name', 'Region']
+        possible_spoc_cols  = ['Spoc Name', 'SPOC Name', 'spoc_name', 'SPOC', 'Executive Name']
+
+        store_col = next((c for c in possible_store_cols if c in spoc_master.columns), None)
+        state_col = next((c for c in possible_state_cols if c in spoc_master.columns), None)
+        spoc_col  = next((c for c in possible_spoc_cols  if c in spoc_master.columns), None)
+
+        if not all([store_col, state_col, spoc_col]):
+            st.error(f"Critical SPOC columns missing!\nFound:\n- Store: {store_col}\n- State: {state_col}\n- SPOC: {spoc_col}")
+            st.stop()
+
+        # ── State filter ──────────────────────────────────────────────────────
+        available_states = sorted(cashify_filtered['Store State'].dropna().unique())
+        selected_states = st.multiselect(
+            "Select States to analyze",
+            options=available_states,
+            default=[s for s in user_south_states if s in available_states]
+        )
+
+        filtered_cashify = cashify_filtered[cashify_filtered['Store State'].isin(selected_states)].copy()
+
+        if 'Store Name' not in filtered_cashify.columns:
+            st.error("Cashify data is missing 'Store Name' column — cannot proceed with store-level analysis.")
+        elif filtered_cashify.empty:
+            st.info("No Cashify records found in selected states.")
+        else:
+            # ── Safe merge with clear column handling ─────────────────────────
+            merged_data = pd.merge(
+                filtered_cashify,
+                spoc_master[[store_col, spoc_col, state_col]],
+                left_on='Store Name',
+                right_on=store_col,
+                how='left',
+                suffixes=('', '_spoc')
+            )
+            # Priority: SPOC master info > original Cashify info
+            merged_data['State']     = merged_data[state_col].combine_first(merged_data['Store State'])
+            merged_data['SPOC Name'] = merged_data[spoc_col].combine_first(pd.Series('Unassigned / Not Mapped', index=merged_data.index))
+
+            # Keep the original 'Store Name' from Cashify (most reliable source)
+            # Don't rely on the merged store column name
+            if 'Store Name_spoc' in merged_data.columns:
+                merged_data = merged_data.drop(columns=['Store Name_spoc'])
+
+            # Clean up any extra suffixed columns we don't want
+            merged_data = merged_data.drop(columns=[
+                c for c in merged_data.columns 
+                if c.endswith('_spoc') or (c != 'Store Name' and c in possible_store_cols)
+            ], errors='ignore')
+
+            # ── Prepare display columns ───────────────────────────────────────
+            merged_data['Product Category'] = merged_data.get('Product Category', 
+            merged_data.get('Product Type').apply(categorize_product) if 'Product Type' in merged_data.columns else 'Unknown')
+        
+            merged_data['Old Device Name'] = merged_data.get('Old Device Name', 'Unknown')
+
+            # Final safety check before groupby
+            required_cols = ['State', 'Store Name', 'SPOC Name', 'Product Category', 'Old Device Name']
+            missing = [col for col in required_cols if col not in merged_data.columns]
+            if missing:
+                st.error(f"Cannot create table — missing columns after merge: {missing}")
+            else:
+                table_data = merged_data.groupby(
+                    required_cols,
+                    dropna=False
+                ).size().reset_index(name='Count of Device').sort_values('Count of Device', ascending=False)
+            
+            # ── Display ───────────────────────────────────────────────────
+            st.dataframe(table_data.style
+                    .format({'Count of Device': '{:,}'})
+                    .highlight_max(subset=['Count of Device'], color='#FFCCCC')
+                    .highlight_max(subset=['Count of Device'], color='#FF6B6B', axis=None),
+                use_container_width=True
+                )
+
+            # State totals + quick highlight
+            state_totals = table_data.groupby('State')['Count of Device'].sum().reset_index(name='Total Devices Lost')
+            state_totals = state_totals.sort_values('Total Devices Lost', ascending=False)
+            grand_total = state_totals['Total Devices Lost'].sum()
+            state_totals.loc[len(state_totals)] = ['**GRAND TOTAL**', grand_total]
+
+            st.markdown("**State-wise Total Losses**")
+            st.dataframe(state_totals.style.format({'Total Devices Lost': '{:,}'}))
+
+            # ── Quick Highlight for Lazy Managers ──────────────────────────────────────
+            st.markdown("**🚨 Top 3 Problem States (Highest Cashify Losses)**")
+            for i, (_, row) in enumerate(state_totals.head(3).iterrows(), 1):
+                if row['State'] != '**GRAND TOTAL**':
+                    st.markdown(f"**{i}. {row['State']}** — **{int(row['Total Devices Lost']):,}** devices lost")
+
+            # ── Top 5 Stores with Highest Device Losses ────────────────────────────────
+            st.markdown("**🏆 Top 5 Stores with Highest Device Losses**")
+
+            # This is the correct way — no 'name=' nonsense
+            top_stores = (table_data.groupby(['State', 'Store Name'])['Count of Device']
+                .sum()
+                .reset_index()                          # ← just this
+                  .rename(columns={'Count of Device': 'Total Loss'})
+                  .sort_values('Total Loss', ascending=False)
+                  .head(5)
+            )
+
+            if top_stores.empty:
+                st.info("No store-level loss data available.")
+            else:
+            # Add rank column (1-based)
+                top_stores = top_stores.copy()  # avoid SettingWithCopyWarning
+                top_stores['Rank'] = range(1, len(top_stores) + 1)
+    
+            # Pretty table display
+            st.dataframe(
+            top_stores[['Rank', 'State', 'Store Name', 'Total Loss']].style
+                .format({'Total Loss': '{:,}'})
+                .highlight_max(subset=['Total Loss'], color='#FFCCCC')     # light red
+                .highlight_max(subset=['Total Loss'], color='#FF6B6B'),    # strong red for the worst
+            use_container_width=True
+        )
+
+            # Quick glance version — managers love this zero-scroll insight
+            st.markdown("**Quick highlight — High volume of device loss:**")
+            for _, row in top_stores.iterrows():
+                st.markdown(f"**{row['Rank']}. {row['State']} → {row['Store Name']}** → **{int(row['Total Loss']):,}** devices lost")
 
     st.write("**Top Performing SPOCs (Target Achievement Categories)**")
     if 'Spoc Name' in maple_filtered.columns and all(col in spoc_df.columns for col in ['Spoc Name', 'Store State', 'Store Name']):
