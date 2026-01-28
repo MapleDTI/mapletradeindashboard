@@ -847,7 +847,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
             # Zone Totals
             maple_south = maple_filtered[maple_filtered['Zone_clean'] == 'South']
             maple_west = maple_filtered[maple_filtered['Zone_clean'] == 'West']
-            maple_north = maple_filtered[maple_filtered['Zone_clean'] == 'North]
+            maple_north = maple_filtered[maple_filtered['Zone_clean'] == 'North']
 
         else:
             maple_daily = maple_weekly = maple_monthly = 0
