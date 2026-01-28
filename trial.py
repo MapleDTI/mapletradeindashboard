@@ -69,7 +69,7 @@ ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish
 RM_STATES = {
     "Sandeep Selvamani": ["Karnataka", "Andhra Pradesh", "Telangana"],
     "Manoj Kanagaraja": ["Kerala", "Tamil Nadu", "Puducherry"],
-    "Mahendra Tomar": ["Maharashtra"]
+    "Mahendra Tomar": ["Maharashtra","Delhi"]
 }
 
 # Expected columns
@@ -95,7 +95,9 @@ STATE_MAPPING = {
     'tamil nadu': 'Tamil Nadu', 'tn': 'Tamil Nadu',
     'kerala': 'Kerala', 'kl': 'Kerala',
     'pondicherry': 'Puducherry', 'puducherry': 'Puducherry', 
-    'py': 'Puducherry'
+    'py': 'Puducherry',
+    'maharashtra': 'Maharashtra', 'mh': 'Maharashtra',
+    'delhi': 'Delhi'
 }
 
 # File URLs
@@ -813,7 +815,8 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
                 .str.lower()
                 .map({
                     'south': 'South', 'south zone': 'South', 'south region': 'South',
-                    'west': 'West', 'west zone': 'West', 'west region': 'West'
+                    'west': 'West', 'west zone': 'West', 'west region': 'West',
+                    'north': 'North', 'north zone': 'North', 'north region': 'North'
                 })
             )
 
@@ -844,6 +847,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
             # Zone Totals
             maple_south = maple_filtered[maple_filtered['Zone_clean'] == 'South']
             maple_west = maple_filtered[maple_filtered['Zone_clean'] == 'West']
+            maple_north = maple_filtered[maple_filtered['Zone_clean'] == 'North]
 
         else:
             maple_daily = maple_weekly = maple_monthly = 0
@@ -854,6 +858,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         st.write(f"Monthly Total: {maple_monthly}")
         st.write(f"South Zone Total: {len(maple_south)}")
         st.write(f"West Zone Total: {len(maple_west)}")
+        st.write(f"North Zone Total: {len(maple_filtered[maple_filtered['Store State'] == 'Delhi'])}")
 
 
     # ---------------- CASHIFY ----------------
@@ -898,6 +903,8 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         st.write(f"Monthly Total: {cashify_monthly}")
         st.write(f"South Zone Total: {len(cashify_south)}")
         st.write(f"West Zone Total: {len(cashify_west)}")
+        st.write(f"North Zone Total: {len(cashify_filtered[cashify_filtered['Store State'] == 'Delhi'])}")
+
 
     # 1.1 Weekly Market Share Overview
     st.header("1.1 Weekly Market Share Overview")
@@ -1010,7 +1017,8 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
 
     zone_state_map = {
         "South": ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry'],
-        "West": ['Maharashtra']
+        "West": ['Maharashtra'],
+        "North": ['Delhi']
     }
     all_states = [state for states in zone_state_map.values() for state in states]
     state_to_zone = {state: zone for zone, states in zone_state_map.items() for state in states}
@@ -1125,7 +1133,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         all_zones = sorted(set(maple_df['Zone'].dropna())) if 'Zone' in maple_df.columns else ['Unknown']
         for month, year in last_n_months:
             for zn in all_zones:
-                if zn in ['South', 'West']:
+                if zn in ['South', 'West','North']:
                     zone_maple = len(maple_df[(maple_df['Zone'] == zn) & (maple_df['Month'] == month) & (maple_df['Year'] == year)])
                     zone_total = zone_maple + len(cashify_df[(cashify_df['Zone'] == zn) & (cashify_df['Month'] == month) & (cashify_df['Year'] == year)]) if 'Zone' in cashify_df.columns else 0
                     zone_ms = calculate_market_share(zone_maple, zone_total)
@@ -1201,7 +1209,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
 
     # 2.4 State-wise Device Counts and Top Performer SPOCs
     st.header("2.4 State-wise Device Counts and Top Performer SPOCs")
-    south_states = ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry']
+    south_states = ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry','Delhi','Maharashtra']
     user_south_states = [s for s in south_states if s in (st.session_state.user_regions or south_states)]
 
     if 'Store State' in maple_filtered.columns and 'Store State' in cashify_filtered.columns:
@@ -1365,110 +1373,6 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
             st.markdown("**Quick highlight — High volume of device loss:**")
             for _, row in top_stores.iterrows():
                 st.markdown(f"**{row['Rank']}. {row['State']} → {row['Store Name']}** → **{int(row['Total Loss']):,}** devices lost")
-
-    st.write("**Top Performing SPOCs (Target Achievement Categories)**")
-    if 'Spoc Name' in maple_filtered.columns and all(col in spoc_df.columns for col in ['Spoc Name', 'Store State', 'Store Name']):
-        last_n_months = get_last_n_months(selected_month, selected_year, 2) if selected_month != "All" else [(selected_month, selected_year)]
-        spoc_achievements = []
-        for month, year in last_n_months:
-            temp_maple = maple_df[(maple_df['Month'] == month) & (maple_df['Year'] == year) & (maple_df['Store State'].isin(user_south_states))]
-            temp_ach = temp_maple.groupby(['Spoc Name', 'Store Name', 'Month']).size().reset_index(name='Achievement')
-            temp_ach['Year'] = year
-            spoc_achievements.append(temp_ach)
-        spoc_achievements = pd.concat(spoc_achievements, ignore_index=True)
-        target_columns = [col for col in spoc_df.columns if col.endswith('Target')]
-        spoc_targets = spoc_df[['Spoc Name', 'Store Name', 'Store State'] + target_columns]
-        top_spoc_df = pd.merge(
-            spoc_achievements,
-            spoc_targets,
-            on=['Spoc Name', 'Store Name'],
-            how='inner'
-        )
-        top_spoc_df = top_spoc_df[top_spoc_df['Store State'].isin(user_south_states)]
-        for month in ['January', 'February', 'March', 'April', 'May', 'June',
-                      'July', 'August', 'September', 'October', 'November', 'December']:
-            target_col = f"{month} Target"
-            if target_col in top_spoc_df.columns:
-                import pandas as pd
-                import numpy as np
-                top_spoc_df[f'% {month} Target Achieved'] = pd.to_numeric(
-                    top_spoc_df.apply(
-                        lambda x: calculate_target_achievement(x['Achievement'], x[target_col])
-                        if x['Month'] == month and pd.notna(x[target_col])
-                        else np.nan,
-                        axis=1
-                    ), errors='coerce'
-                ).round(2)
-        top_spoc_df = top_spoc_df[top_spoc_df['Month'].isin([
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-        ])]
-        target_col = f'% {selected_month} Target Achieved'
-        if selected_month != "All" and target_col in top_spoc_df.columns:
-            spoc_below_20 = top_spoc_df[top_spoc_df[target_col] < 20]
-            spoc_20_90 = top_spoc_df[top_spoc_df[target_col].between(20, 90)]
-            spoc_above_90 = top_spoc_df[top_spoc_df[target_col] > 90]
-            display_cols = ['Spoc Name', 'Store State', 'Store Name', 'Month', 'Achievement'] + [col for col in top_spoc_df.columns if col.endswith('Target') or col.startswith('%')]
-            if not spoc_below_20.empty:
-                st.subheader("SPOCs with Target Achievement Below 20%")
-                st.dataframe(spoc_below_20[display_cols])
-                spoc_below_20['Spoc_Display'] = spoc_below_20['Spoc Name'] + ' (' + spoc_below_20['Store State'] + ')'
-                fig_spoc_below_20 = px.bar(
-                    spoc_below_20,
-                    x='Spoc_Display',
-                    y=target_col,
-                    color='Month',
-                    text=target_col,
-                    title="SPOCs with Below 20% Target Achievement (South Zone)",
-                    height=600
-                )
-                fig_spoc_below_20.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
-                fig_spoc_below_20.update_layout(xaxis_title="SPOC Name (State)", xaxis_tickangle=45, showlegend=True)
-                st.plotly_chart(fig_spoc_below_20, use_container_width=True)
-            if not spoc_20_90.empty:
-                st.subheader("SPOCs with Target Achievement 20-90%")
-                st.dataframe(spoc_20_90[display_cols])
-                spoc_20_90['Spoc_Display'] = spoc_20_90['Spoc Name'] + ' (' + spoc_20_90['Store State'] + ')'
-                fig_spoc_20_90 = px.bar(
-                    spoc_20_90,
-                    x='Spoc_Display',
-                    y=target_col,
-                    color='Month',
-                    text=target_col,
-                    title="SPOCs with 20-90% Target Achievement (South Zone)",
-                    height=600
-                )
-                fig_spoc_20_90.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
-                fig_spoc_20_90.update_layout(xaxis_title="SPOC Name (State)", xaxis_tickangle=45, showlegend=True)
-                st.plotly_chart(fig_spoc_20_90, use_container_width=True)
-            if not spoc_above_90.empty:
-                st.subheader("SPOCs with Target Achievement Above 90%")
-                st.dataframe(spoc_above_90[display_cols])
-                spoc_above_90['Spoc_Display'] = spoc_above_90['Spoc Name'] + ' (' + spoc_above_90['Store State'] + ')'
-                fig_spoc_above_90 = px.bar(
-                    spoc_above_90,
-                    x='Spoc_Display',
-                    y=target_col,
-                    color='Month',
-                    text=target_col,
-                    title="SPOCs with Above 90% Target Achievement (South Zone)",
-                    height=600
-                )
-                fig_spoc_above_90.update_traces(texttemplate='%{text:.1f}%', textposition='auto')
-                fig_spoc_above_90.update_layout(xaxis_title="SPOC Name (State)", xaxis_tickangle=45, showlegend=True)
-                st.plotly_chart(fig_spoc_above_90, use_container_width=True)
-                st.download_button(
-                    label="Download Top Performing SPOCs as Excel",
-                    data=create_excel_buffer(spoc_above_90[display_cols], 'Top SPOCs'),
-                    file_name="top_spocs.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            else:
-                st.write("No SPOCs have target achievement in the specified categories for the selected period.")
-        else:
-            st.warning("Please select a specific month for SPOC performance analysis.")
-    else:
-        st.warning("Required columns missing for SPOC performance analysis (Spoc Name, Store State, or Target columns).")
 
     # 2.5 Attach% Analysis
     st.header("2.5 Attach% Analysis by State, Store, and Performers")
