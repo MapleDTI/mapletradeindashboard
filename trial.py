@@ -858,7 +858,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         st.write(f"Monthly Total: {maple_monthly}")
         st.write(f"South Zone Total: {len(maple_south)}")
         st.write(f"West Zone Total: {len(maple_west)}")
-        st.write(f"North Zone Total: {len(maple_north)}")
+        st.write(f"North Zone Total: {len(maple_filtered[maple_filtered['Store State'] == 'Delhi'])}")
 
 
     # ---------------- CASHIFY ----------------
@@ -903,8 +903,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         st.write(f"Monthly Total: {cashify_monthly}")
         st.write(f"South Zone Total: {len(cashify_south)}")
         st.write(f"West Zone Total: {len(cashify_west)}")
-        st.write(f"North Zone Total: {len(cashify_north)}")
-
+        st.write(f"North Zone Total: {len(cashify_filtered[cashify_filtered['Store State'] == 'Delhi'])}")
 
     # 1.1 Weekly Market Share Overview
     st.header("1.1 Weekly Market Share Overview")
