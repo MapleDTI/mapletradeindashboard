@@ -69,7 +69,7 @@ ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish
 RM_STATES = {
     "Sandeep Selvamani": ["Karnataka", "Andhra Pradesh", "Telangana"],
     "Manoj Kanagaraja": ["Kerala", "Tamil Nadu", "Puducherry"],
-    "Mahendra Tomar": ["Maharashtra","Delhi"]
+    "Mahendra Tomar": ["Maharashtra","Delhi"],
 }
 
 # Expected columns
@@ -816,7 +816,9 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
                 .map({
                     'south': 'South', 'south zone': 'South', 'south region': 'South',
                     'west': 'West', 'west zone': 'West', 'west region': 'West',
-                    'north': 'North', 'north zone': 'North', 'north region': 'North'
+                    'north':'North',      # ← was missing
+                    'north zone':'North',      # ← was missing
+                    'north region':'North',  # ← was missing
                 })
             )
 
@@ -858,7 +860,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         st.write(f"Monthly Total: {maple_monthly}")
         st.write(f"South Zone Total: {len(maple_south)}")
         st.write(f"West Zone Total: {len(maple_west)}")
-        st.write(f"North Zone Total: {len(maple_filtered[maple_filtered['Store State'] == 'Delhi'])}")
+        st.write(f"North Zone Total: {f"North Zone Total: {len(maple_north)}")
 
 
     # ---------------- CASHIFY ----------------
@@ -903,7 +905,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         st.write(f"Monthly Total: {cashify_monthly}")
         st.write(f"South Zone Total: {len(cashify_south)}")
         st.write(f"West Zone Total: {len(cashify_west)}")
-        st.write(f"North Zone Total: {len(cashify_filtered[cashify_filtered['Store State'] == 'Delhi'])}")
+        st.write(f"North Zone Total: {len(cashify_north)}")
 
     # 1.1 Weekly Market Share Overview
     st.header("1.1 Weekly Market Share Overview")
@@ -1017,7 +1019,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
     zone_state_map = {
         "South": ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry'],
         "West": ['Maharashtra'],
-        "North": ['Delhi']
+        "North": ['Delhi'],
     }
     all_states = [state for states in zone_state_map.values() for state in states]
     state_to_zone = {state: zone for zone, states in zone_state_map.items() for state in states}
@@ -1208,11 +1210,11 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
 
     # 2.4 State-wise Device Counts and Top Performer SPOCs
     st.header("2.4 State-wise Device Counts and Top Performer SPOCs")
-    south_states = ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry','Delhi','Maharashtra']
-    user_south_states = [s for s in south_states if s in (st.session_state.user_regions or south_states)]
+    all_tracked_states = ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Puducherry','Delhi','Maharashtra']
+    user_south_states = [s for s in south_states if s in (st.session_state.user_regions or all_tracked_states)]
 
     if 'Store State' in maple_filtered.columns and 'Store State' in cashify_filtered.columns:
-        st.write("**Device Counts per State (South Zone)**")
+        st.write("**Device Counts per State (All Zones)**")
         maple_state_counts = maple_filtered[maple_filtered['Store State'].isin(user_south_states)].groupby('Store State').size().reset_index(name='Maple Device Count')
         cashify_state_counts = cashify_filtered[cashify_filtered['Store State'].isin(user_south_states)].groupby('Store State').size().reset_index(name='Cashify Device Count')
     
@@ -2694,7 +2696,7 @@ def comparative_analysis(maple_df, spoc_df):
 
     # === State Wise ===
     state_rows = []
-    states_order = ["Andhra Pradesh", "Telangana", "Karnataka", "Puducherry", "Tamil Nadu", "Kerala", "Maharashtra"]
+    states_order = ["Andhra Pradesh", "Telangana", "Karnataka", "Puducherry", "Tamil Nadu", "Kerala", "Maharashtra","Delhi"]
     for state in states_order:
         if selected_rm != "All" and state not in RM_STATES.get(selected_rm, []): continue
         state_spoc = filtered_spoc[filtered_spoc['Store State'] == state]
