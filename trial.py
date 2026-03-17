@@ -860,7 +860,7 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
         st.write(f"Monthly Total: {maple_monthly}")
         st.write(f"South Zone Total: {len(maple_south)}")
         st.write(f"West Zone Total: {len(maple_west)}")
-        st.write(f"North Zone Total: {f"North Zone Total: {len(maple_north)}")
+        st.write(f"North Zone Total: {len(cashify_north)}")
 
 
     # ---------------- CASHIFY ----------------
