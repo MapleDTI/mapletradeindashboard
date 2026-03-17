@@ -865,48 +865,69 @@ def base_analysis(maple_df, cashify_df, spoc_df, lob_sales_df):
 
     # ---------------- CASHIFY ----------------
     with col2:
-        st.subheader("Cashify")
+    st.subheader("Cashify")
 
-        if not cashify_filtered.empty:
-            # Define Week (1–7 = W1, 8–14 = W2, etc.)
-            cashify_filtered['Week'] = (
-                cashify_filtered['Order Date'].dt.day.sub(1) // 7 + 1
-            )
+    if not cashify_filtered.empty:
+        # Add Zone_clean to cashify_filtered
+        cashify_filtered['Zone_clean'] = (
+            cashify_filtered['Zone']
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .map({
+                'south':        'South',
+                'south zone':   'South',
+                'south region': 'South',
+                'west':         'West',
+                'west zone':    'West',
+                'west region':  'West',
+                'north':        'North',
+                'north zone':   'North',
+                'north region': 'North',
+            })
+        )
 
-            # Daily Average
-            cashify_daily = (
-                cashify_filtered
-                .groupby(cashify_filtered['Order Date'].dt.date)
-                .size()
-                .mean()
-            )
+        # Define Week
+        cashify_filtered['Week'] = (
+            cashify_filtered['Order Date'].dt.day.sub(1) // 7 + 1
+        )
 
-            # Weekly Average (FIXED)
-            cashify_weekly = (
-                cashify_filtered
-                .groupby('Week')
-                .size()
-                .mean()
-            )
+        # Daily Average
+        cashify_daily = (
+            cashify_filtered
+            .groupby(cashify_filtered['Order Date'].dt.date)
+            .size()
+            .mean()
+        )
 
-            # Monthly Total
-            cashify_monthly = len(cashify_filtered) if selected_month != "All" else 0
+        # Weekly Average
+        cashify_weekly = (
+            cashify_filtered
+            .groupby('Week')
+            .size()
+            .mean()
+        )
 
-            # Zone placeholders (Cashify doesn’t have zone split)
-            cashify_south = cashify_filtered
-            cashify_west = pd.DataFrame()
+        # Monthly Total
+        cashify_monthly = len(cashify_filtered) if selected_month != "All" else 0
 
-        else:
-            cashify_daily = cashify_weekly = cashify_monthly = 0
-            cashify_south = cashify_west = []
+        # Zone splits
+        cashify_south = cashify_filtered[cashify_filtered['Zone_clean'] == 'South']
+        cashify_west  = cashify_filtered[cashify_filtered['Zone_clean'] == 'West']
+        cashify_north = cashify_filtered[cashify_filtered['Zone_clean'] == 'North']
 
-        st.write(f"Daily Avg: {cashify_daily:.2f}")
-        st.write(f"Weekly Avg: {cashify_weekly:.2f}")
-        st.write(f"Monthly Total: {cashify_monthly}")
-        st.write(f"South Zone Total: {len(cashify_south)}")
-        st.write(f"West Zone Total: {len(cashify_west)}")
-        st.write(f"North Zone Total: {len(cashify_north)}")
+    else:
+        cashify_daily = cashify_weekly = cashify_monthly = 0
+        cashify_south = pd.DataFrame()
+        cashify_west  = pd.DataFrame()
+        cashify_north = pd.DataFrame()
 
+    st.write(f"Daily Avg: {cashify_daily:.2f}")
+    st.write(f"Weekly Avg: {cashify_weekly:.2f}")
+    st.write(f"Monthly Total: {cashify_monthly}")
+    st.write(f"South Zone Total: {len(cashify_south)}")
+    st.write(f"West Zone Total:  {len(cashify_west)}")
+    st.write(f"North Zone Total: {len(cashify_north)}")
     # 1.1 Weekly Market Share Overview
     st.header("1.1 Weekly Market Share Overview")
     if selected_month != "All" and 'Zone' in maple_filtered.columns and 'Store State' in maple_filtered.columns:
