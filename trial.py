@@ -59,6 +59,7 @@ users = {
     "leena_victoria":{"password": "leena@2026", "name": "Leena Victoria"},
     "chandrakant_sonawane": {"password": "Chandrakant$2025", "name": "Chandrakant Sonawane"},
     "rohit_pujari":{"password": "Rohit#2025", "name": "Rohit Pujari"},
+    "madhurima_das":{"password": "Madhurima#2026@", "name": "Madhurima Das"},
     "sandeep_selvamani": {"password": "Sandeep@2025", "name": "Sandeep Selvamani", "regions": ["Karnataka", "Andhra Pradesh", "Telangana"]},
     "manoj_kanagaraja": {"password": "Manoj#2025", "name": "Manoj Kanagaraja", "regions": ["Tamil Nadu", "Kerala", "Puducherry"]}
 }
