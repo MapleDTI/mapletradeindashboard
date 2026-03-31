@@ -71,7 +71,7 @@ ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish
 RM_STATES = {
     "Sandeep Selvamani": ["Karnataka", "Andhra Pradesh", "Telangana"],
     "Manoj Kanagaraja": ["Kerala", "Tamil Nadu", "Puducherry"],
-    "Mahendra Tomar": ["Maharashtra","Delhi"],
+    "Mahendra Tomar": ["Maharashtra","Delhi","Gujarat"],
 }
 
 # Expected columns
