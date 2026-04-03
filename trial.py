@@ -61,7 +61,7 @@ users = {
     "rohit_pujari":{"password": "Rohit#2025", "name": "Rohit Pujari"},
     "madhurima_das":{"password": "Madhurima#2026@", "name": "Madhurima Das"},
     "sandeep_selvamani": {"password": "Sandeep@2025", "name": "Sandeep Selvamani", "regions": ["Karnataka", "Andhra Pradesh", "Telangana"]},
-    "manoj_kanagaraja": {"password": "Manoj#2025", "name": "Manoj Kanagaraja", "regions": ["Tamil Nadu", "Kerala", "Puducherry"]}
+    "vijay_pandayan": {"password": "Vijay#2026@", "name": "Vijay Pandayan", "regions": ["Tamil Nadu", "Kerala", "Puducherry"]}
 }
 
 # Allowed users for RM filter
@@ -71,7 +71,7 @@ ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish
 # Regional Managers and their states
 RM_STATES = {
     "Sandeep Selvamani": ["Karnataka", "Andhra Pradesh", "Telangana"],
-    "Manoj Kanagaraja": ["Kerala", "Tamil Nadu", "Puducherry"],
+    "Vijay Pandayan": ["Kerala", "Tamil Nadu", "Puducherry"],
     "Mahendra Tomar": ["Maharashtra","Delhi","Gujarat"],
 }
 
@@ -2638,7 +2638,7 @@ def comparative_analysis(maple_df, spoc_df):
     with col2:
         selected_month = st.selectbox("Month", sorted(maple_df[maple_df['Year'] == selected_year]['Month'].unique()), key="comp_month")
 
-    selected_rm = st.selectbox("Regional Manager", ["All", "Sandeep Selvamani", "Manoj Kanagaraja", "Mahendra Tomar"], key="comp_rm")
+    selected_rm = st.selectbox("Regional Manager", ["All", "Sandeep Selvamani", "Vijay Pandayan", "Mahendra Tomar"], key="comp_rm")
 
     filtered_maple = maple_df[(maple_df['Year'] == selected_year) & (maple_df['Month'] == selected_month)].copy()
     filtered_spoc = spoc_df.copy()
@@ -2654,7 +2654,7 @@ def comparative_analysis(maple_df, spoc_df):
 
     # === Regional Manager Wise ===
     rm_rows = []
-    rm_group_map = {"Mahendra Tomar": "Maharashtra", "Sandeep Selvamani": "KN, TS & AP", "Manoj Kanagaraja": "KL, TN & PC"}
+    rm_group_map = {"Mahendra Tomar": "Maharashtra", "Sandeep Selvamani": "KN, TS & AP", "Vijay Pandayan": "KL, TN & PC"}
     for rm, states in RM_STATES.items():
         if selected_rm != "All" and rm != selected_rm: continue
         group_name = rm_group_map.get(rm, rm)
