@@ -2695,9 +2695,9 @@ def comparative_analysis(maple_df, spoc_df):
             return ''
 
         numeric_cols = rm_display.select_dtypes(include=['number']).columns
-        st.dataframe(rm_display.style.format("{:.0f}", subset=numeric_cols).applymap(color_pct, subset=week_cols + ["Overall Target"]), 
-                     use_container_width=True, hide_index=True)
-
+        st.dataframe(rm_display.style.format("{:.0f}", subset=numeric_cols).apply(lambda col: col.map(color_pct), subset=week_cols + ["Overall Target"]),
+                     use_container_width=True,hide_index=True)
+        
         # Bar Chart: Weeks on X, Target / Achievement / Achieved % on Y
         bar_data = []
         for r in rm_rows:
@@ -2760,9 +2760,11 @@ def comparative_analysis(maple_df, spoc_df):
             return ''
 
         numeric_cols = state_display.select_dtypes(include=['number']).columns
-        st.dataframe(state_display.style.format("{:.0f}", subset=numeric_cols).applymap(color_pct, subset=week_cols + ["Overall Target"]), 
-                     use_container_width=True, hide_index=True)
-
+        st.dataframe(state_display.style.format("{:.0f}", subset=numeric_cols)
+                     .apply(lambda col: col.map(color_pct), subset=week_cols + ["Overall Target"]),
+                     use_container_width=True,
+                     hide_index=True)
+        
         # Bar Chart: Weeks on X, Target / Achievement / Achieved % on Y
         bar_data = []
         for r in state_rows:
@@ -2832,8 +2834,9 @@ def comparative_analysis(maple_df, spoc_df):
                     return 'color: red' if pct < 70 else 'color: green'
                 return ''
 
-            st.dataframe(store_display.style.format("{:.0f}", subset=numeric_cols).applymap(color_pct, subset=week_cols + ["Overall Target"]), 
-                         use_container_width=True, hide_index=True)
+            st.dataframe(store_display.style.format("{:.0f}", subset=numeric_cols)
+                         .apply(lambda col: col.map(color_pct), subset=week_cols + ["Overall Target"]),
+                         use_container_width=True,hide_index=True)
 
     # === Trend Analysis over Months ===
     st.subheader("Monthly Trend Analysis (Last 6 Months)")
