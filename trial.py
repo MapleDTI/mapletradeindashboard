@@ -60,14 +60,13 @@ users = {
     "chandrakant_sonawane": {"password": "Chandrakant$2025", "name": "Chandrakant Sonawane"},
     "rohit_pujari":{"password": "Rohit#2025", "name": "Rohit Pujari"},
     "madhurima_das":{"password": "Madhurima#2026@", "name": "Madhurima Das"},
-    "ramesh_s":{"password": "Ramesh@TL#26", "name": "Ramesh Subhramani"}
     "sandeep_selvamani": {"password": "Sandeep@2025", "name": "Sandeep Selvamani", "regions": ["Karnataka", "Andhra Pradesh", "Telangana"]},
     "vijay_pandayan": {"password": "Vijay#2026@", "name": "Vijay Pandayan", "regions": ["Tamil Nadu", "Kerala", "Puducherry"]}
 }
 
 # Allowed users for RM filter
 ALLOWED_RM_USERS = ["vishwa_sanghavi", "mahesh_shetty", "sandesh_kadam", "kavish_shah", "manil_shetty","chandrakant_sonawane", "rohit_pujari",
-                   "madhurima_das","ramesh_s"]
+                   "madhurima_das"]
 
 # Regional Managers and their states
 RM_STATES = {
