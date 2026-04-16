@@ -2887,11 +2887,11 @@ def comparative_analysis(maple_df, spoc_df):
                 return 'color: red' if val < 70 else 'color: green'
             return ''
 
-        st.dataframe(spoc_df_rank.style
-                     .format("{:.0f}", subset=["Target", "Achievement"])
+        st.dataframe(spoc_df_rank.style.format("{:.0f}", subset=["Target", "Achievement"])
                      .format("{:.1f}", subset=["Achievement %"])
-                     .applymap(color_spoc_pct, subset=["Achievement %"]), 
-                     use_container_width=True, hide_index=True)
+                     .apply(lambda col: col.map(color_spoc_pct), subset=["Achievement %"]),
+                     use_container_width=True,
+                     hide_index=True)
 
         # Bar Chart for SPOC Ranking
         fig_spoc = px.bar(spoc_df_rank.head(10), x="SPOC Name", y="Achievement %", color="Achievement %",
