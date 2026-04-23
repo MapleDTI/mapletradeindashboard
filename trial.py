@@ -55,7 +55,7 @@ users = {
     "manil_shetty": {"password": "Manil@2025", "name": "Manil Shetty"},
     "hari_raja": {"password": "hari*marketing#2025", "name": "Hari Raja"},
     "hardik_nahar": {"password": "hardik%2025", "name": "Hardik Nahar"},
-    "sohail_panjawani": {"password": "sohail@2025", "name": "Sohail Panjawani"},
+    "mayur_bhorunde": {"password": "Mayur@2026$#", "name": "Mayur Bhorunde"},
     "leena_victoria":{"password": "leena@2026", "name": "Leena Victoria"},
     "chandrakant_sonawane": {"password": "Chandrakant$2025", "name": "Chandrakant Sonawane"},
     "rohit_pujari":{"password": "Rohit#2025", "name": "Rohit Pujari"},
